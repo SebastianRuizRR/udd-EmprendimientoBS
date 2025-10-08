@@ -392,21 +392,10 @@ type FlowState = {
   roomCode: string;
   expectedTeams: number;
 };
+const FLOW_KEY = "udd_flow_state_v1";
+const READY_KEY = "udd_ready_teams_v1";
+const COINS_KEY = "udd_coins_v1";
 
-const FLOW_ = "udd_flow_state_v1";
-const READY_{(Object.keys(THEMES) as (keyof typeof THEMES)[]).map((key) => {
-  const active = temaSel === key;
-  return (
-    <Btn
-      key={String(key)}                   // ← fuerza string
-      onClick={() => setTemaSel(key as ThemeId)}}
-      bg={active ? theme.azul : "#BBDEFB"}
-      fg={active ? theme.blanco : theme.texto}
-      label={THEMES[key].label}
-      full={false}
-    />
-  );
-})}
  = "udd_ready_teams_v1";
 const COINS_KEY = "udd_coins_v1";
 
@@ -2468,7 +2457,7 @@ function ThemeChallengeSection({
           const active = temaSel === key;
           return (
             <Btn
-              key={key}
+              key={String(key)}
               onClick={() => setTemaSel(key)}
               bg={active ? theme.azul : "#BBDEFB"}
               fg={active ? theme.blanco : theme.texto}
