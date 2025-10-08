@@ -1,1 +1,6 @@
+[build]
+  command = "npm run build"
+  publish = "build"   # CRA genera 'build', NO 'dist'
 
+[build.environment]
+  NODE_VERSION = "18"
