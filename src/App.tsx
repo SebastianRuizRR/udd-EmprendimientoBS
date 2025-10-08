@@ -130,6 +130,7 @@ const Card: React.FC<{
   subtitle?: string;
   width?: number;
   tight?: boolean;
+  children?: React.ReactNode;
 }> = ({ title, subtitle, width = 520, children, tight }) => (
   <div
     style={{
