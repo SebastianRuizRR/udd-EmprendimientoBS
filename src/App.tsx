@@ -31,12 +31,12 @@ const GlobalFormCSS = () => (
       outline: 3px solid #93C5FD;
       outline-offset: 2px;
     }
-    @frames crownFloat { 0% { transform: translateY(0); } 50% { transform: translateY(-6px); } 100% { transform: translateY(0); } }
-    @frames shimmer { 0% { background-position: 0% 0; } 100% { background-position: 120% 0; } }
-    @frames fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(360deg); opacity: 0.9; } }
-    @frames floatY { 0% { transform: translateY(0px); } 50% { transform: translateY(-18px); } 100% { transform: translateY(0px); } }
-    @frames drift { 0% { transform: translateX(0) rotate(0deg); } 50% { transform: translateX(20px) rotate(8deg); } 100% { transform: translateX(0) rotate(0deg); } }
-    @frames pulseSoft { 0% { transform: scale(1); opacity: .65; } 50% { transform: scale(1.06); opacity: .85; } 100% { transform: scale(1); opacity: .65; }
+    @keyframes crownFloat { 0% { transform: translateY(0); } 50% { transform: translateY(-6px); } 100% { transform: translateY(0); } }
+    @keyframes shimmer { 0% { background-position: 0% 0; } 100% { background-position: 120% 0; } }
+    @keyframes fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(360deg); opacity: 0.9; } }
+    @keyframes floatY { 0% { transform: translateY(0px); } 50% { transform: translateY(-18px); } 100% { transform: translateY(0px); } }
+    @keyframes drift { 0% { transform: translateX(0) rotate(0deg); } 50% { transform: translateX(20px) rotate(8deg); } 100% { transform: translateX(0) rotate(0deg); } }
+    @keyframes pulseSoft { 0% { transform: scale(1); opacity: .65; } 50% { transform: scale(1.06); opacity: .85; } 100% { transform: scale(1); opacity: .65; } }
   `}</style>
 );
 
@@ -253,39 +253,16 @@ const Background = memo(() => (
         filter: "blur(2px)",
       }}
     />
-    <Orb
-      left="6%"
-      top="72%"
-      size={220}
-      color={`${theme.amarillo}55`}
-      delay={0.2}
-    />
-    <Orb
-      left="78%"
-      top="68%"
-      size={180}
-      color={`${theme.rosa}44`}
-      delay={0.6}
-    />
-    <Orb
-      left="12%"
-      top="18%"
-      size={140}
-      color={`${theme.azul}55`}
-      delay={0.1}
-    />
+    <Orb left="6%" top="72%" size={220} color={`${theme.amarillo}55`} delay={0.2} />
+    <Orb left="78%" top="68%" size={180} color={`${theme.rosa}44`} delay={0.6} />
+    <Orb left="12%" top="18%" size={140} color={`${theme.azul}55`} delay={0.1} />
     <Wave color={`${theme.azul}`} opacity={0.18} top={100} />
     <Wave color={`${theme.rosa}`} opacity={0.14} top={170} reverse />
-    <GeoPiece
-      left="70%"
-      top="22%"
-      size={140}
-      color={`${theme.blanco}18`}
-      rotate
-    />
+    <GeoPiece left="70%" top="22%" size={140} color={`${theme.blanco}18`} rotate />
     <GeoPiece left="28%" top="78%" size={160} color={`${theme.blanco}14`} />
   </div>
 ));
+
 const Orb: React.FC<{
   left: string;
   top: string;
@@ -303,12 +280,11 @@ const Orb: React.FC<{
       borderRadius: "50%",
       background: color,
       filter: "blur(6px)",
-      animation: `floatY ${
-        5.5 + Math.random() * 2
-      }s ease-in-out ${delay}s infinite`,
+      animation: `floatY ${5.5 + Math.random() * 2}s ease-in-out ${delay}s infinite`,
     }}
   />
 );
+
 const Wave: React.FC<{
   color: string;
   opacity?: number;
@@ -335,6 +311,7 @@ const Wave: React.FC<{
     />
   </svg>
 );
+
 const GeoPiece: React.FC<{
   left: string;
   top: string;
@@ -360,7 +337,7 @@ const GeoPiece: React.FC<{
   />
 );
 
-/* =====================  SHARED FLOW (localStorage)  ===================== */
+/* =====================  STORAGE KEYS  ===================== */
 type FlowStep =
   | "lobby"
   | "f1_video"
@@ -388,21 +365,18 @@ type FlowStep =
 type FlowState = {
   step: FlowStep;
   running: boolean;
-  remaining: number; // secs
+  remaining: number;
   roomCode: string;
   expectedTeams: number;
 };
+
 const FLOW_KEY = "udd_flow_state_v1";
 const READY_KEY = "udd_ready_teams_v1";
 const COINS_KEY = "udd_coins_v1";
-
- = "udd_ready_teams_v1";
-const COINS_KEY = "udd_coins_v1";
-
-/* ==== NUEVO: persistencia de Temáticas y Analíticas ==== */
 const THEMES_KEY = "udd_themes_v1";
 const ANALYTICS_KEY = "udd_analytics_v1";
 
+/* =====================  PERSISTENCIA  ===================== */
 type ThemeId = "salud" | "sustentabilidad" | "educacion";
 type ThemePersona = { nombre: string; edad: number; bio: string };
 type ThemeChallenge = { titulo: string; descripcion: string };
@@ -413,7 +387,7 @@ type ThemeConfig = Record<
 
 type Analytics = {
   roomsCreated: number;
-  challengeUsage: Record<string, number>; // key: `${themeId}#${idx}`
+  challengeUsage: Record<string, number>;
   teams: {
     roomCode: string;
     teamName: string;
@@ -442,10 +416,8 @@ function writeJSON(key: string, value: any) {
   } catch {}
 }
 
-/* ---- Señal de cambios de storage (con fallback polling) ---- */
 function useStorageSignal(keys: string[], pollMs = 800) {
   const [tick, setTick] = useState(0);
-
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
@@ -458,7 +430,6 @@ function useStorageSignal(keys: string[], pollMs = 800) {
       window.clearInterval(id);
     };
   }, [keys, pollMs]);
-
   return tick;
 }
 
@@ -493,7 +464,6 @@ function useSharedFlow(isTeacher: boolean, initial: FlowState) {
     } catch {}
   };
 
-  // Timer controlado por el profesor
   useEffect(() => {
     if (!isTeacher) return;
     if (!flow.running) return;
@@ -529,7 +499,6 @@ function useSharedFlow(isTeacher: boolean, initial: FlowState) {
   return { flow, setStep, startTimer, pauseTimer, resetTimer, publish };
 }
 
-/* ====== helpers analíticas ====== */
 function useAnalytics() {
   const [analytics, setAnalytics] = useState<Analytics>(() =>
     readJSON<Analytics>(ANALYTICS_KEY, {
@@ -577,7 +546,6 @@ export default function App() {
     "inicio"
   );
 
-  // sala / grupos
   const [equiposQty, setEquiposQty] = useState(4);
   const [roomCode, setRoomCode] = useState("");
   const [groupName, setGroupName] = useState("");
@@ -587,11 +555,8 @@ export default function App() {
     { nombre: string; carrera: string }[]
   >([]);
   const [teamReady, setTeamReady] = useState(false);
-
-  // monedas locales del equipo
   const [coins, setCoins] = useState(0);
 
-  // Responsive
   const isTablet = useMediaQuery("(max-width: 1180px)");
   const isMobile = useMediaQuery("(max-width: 640px)");
 
@@ -606,7 +571,6 @@ export default function App() {
   const { flow, setStep, startTimer, pauseTimer, resetTimer, publish } =
     useSharedFlow(isTeacher, initialFlow);
 
-  /* ===== storage signal (top-level) ===== */
   const storageTick = useStorageSignal(
     mode === "prof"
       ? [READY_KEY, COINS_KEY, FLOW_KEY, ANALYTICS_KEY, THEMES_KEY]
@@ -616,11 +580,13 @@ export default function App() {
     800
   );
 
-  /* ===== Helpers ready/coins ===== */
   const teamId =
     flow.roomCode && (groupName || "(sin-nombre)")
       ? `${flow.roomCode}::${(groupName || "").trim() || "sin-nombre"}`
       : "";
+
+  const analyticsApi = useAnalytics();
+  const { analytics, update } = analyticsApi;
 
   const markReady = () => {
     const set = new Set<string>(readJSON<string[]>(READY_KEY, []));
@@ -635,9 +601,7 @@ export default function App() {
         })
       );
     } catch {}
-    // registrar equipo + integrantes en analíticas
     if (teamId) {
-      const { update } = analyticsApi;
       const teamName = teamId.split("::")[1] || "Equipo";
       update((a) => ({
         ...a,
@@ -681,7 +645,6 @@ export default function App() {
     } catch {}
   };
 
-  // Report coins (alumno)
   useEffect(() => {
     if (!teamId || mode !== "alumno") return;
     const map = readJSON<Record<string, number>>(COINS_KEY, {});
@@ -708,8 +671,6 @@ export default function App() {
     return pairs.sort((a, b) => b.total - a.total);
   }, [flow.roomCode, flow.step, storageTick]);
 
-  // ====== Games state ======
-  // F1 – Spot
   type Diff = {
     x: number;
     y: number;
@@ -767,7 +728,6 @@ export default function App() {
     setTimeout(() => tip.remove(), 1200);
   };
 
-  // F1 – Matrix
   const size = 5;
   const makeGrid = () =>
     Array.from({ length: size }, () =>
@@ -807,7 +767,6 @@ export default function App() {
     });
   };
 
-  // F2 – Empatía
   const EMPATIA_FIELDS = [
     { key: "perfil", label: "Perfil" },
     { key: "entorno", label: "Entorno" },
@@ -835,23 +794,13 @@ export default function App() {
     });
   };
 
-  /* ===== Temas/Desafíos persistentes ===== */
   const defaultTHEMES: ThemeConfig = {
     salud: {
       label: "Salud",
       desafios: [
-        {
-          titulo: "Desafío 1",
-          descripcion: "Mejorar acceso a atención básica en barrios alejados.",
-        },
-        {
-          titulo: "Desafío 2",
-          descripcion: "Reducir tiempos de espera en consultas no críticas.",
-        },
-        {
-          titulo: "Desafío 3",
-          descripcion: "Apoyo a cuidadores de adultos mayores.",
-        },
+        { titulo: "Desafío 1", descripcion: "Mejorar acceso a atención básica en barrios alejados." },
+        { titulo: "Desafío 2", descripcion: "Reducir tiempos de espera en consultas no críticas." },
+        { titulo: "Desafío 3", descripcion: "Apoyo a cuidadores de adultos mayores." },
       ],
       persona: {
         nombre: "María",
@@ -862,18 +811,9 @@ export default function App() {
     sustentabilidad: {
       label: "Sustentabilidad",
       desafios: [
-        {
-          titulo: "Desafío 1",
-          descripcion: "Disminuir residuos en campus y comunidad.",
-        },
-        {
-          titulo: "Desafío 2",
-          descripcion: "Optimizar uso de agua y energía en hogares.",
-        },
-        {
-          titulo: "Desafío 3",
-          descripcion: "Movilidad sostenible para trayectos cortos.",
-        },
+        { titulo: "Desafío 1", descripcion: "Disminuir residuos en campus y comunidad." },
+        { titulo: "Desafío 2", descripcion: "Optimizar uso de agua y energía en hogares." },
+        { titulo: "Desafío 3", descripcion: "Movilidad sostenible para trayectos cortos." },
       ],
       persona: {
         nombre: "Diego",
@@ -884,19 +824,9 @@ export default function App() {
     educacion: {
       label: "Educación",
       desafios: [
-        {
-          titulo: "Desafío 1",
-          descripcion:
-            "Motivar hábitos de estudio en estudiantes con poco tiempo.",
-        },
-        {
-          titulo: "Desafío 2",
-          descripcion: "Facilitar aprendizaje práctico en primer año.",
-        },
-        {
-          titulo: "Desafío 3",
-          descripcion: "Mejorar integración de estudiantes internacionales.",
-        },
+        { titulo: "Desafío 1", descripcion: "Motivar hábitos de estudio en estudiantes con poco tiempo." },
+        { titulo: "Desafío 2", descripcion: "Facilitar aprendizaje práctico en primer año." },
+        { titulo: "Desafío 3", descripcion: "Mejorar integración de estudiantes internacionales." },
       ],
       persona: {
         nombre: "Aisha",
@@ -925,7 +855,6 @@ export default function App() {
   const [desafioIndex, setDesafioIndex] = useState(0);
   const desafioActual = THEMES[temaSel].desafios[desafioIndex];
 
-  // Bubble sizes
   const isTabletMedia = useMediaQuery("(max-width: 1180px)");
   const isMobileMedia = useMediaQuery("(max-width: 640px)");
   const bubbleSize = isMobileMedia ? 84 : isTabletMedia ? 96 : 108;
@@ -942,20 +871,10 @@ export default function App() {
     [isTabletMedia, isMobileMedia]
   );
 
-  // ===== NUEVO: pestaña activa F1 en alumno =====
   const [f1Tab, setF1Tab] = useState<"spot" | "matrix">("spot");
 
-  /* ====== Analytics hook instance ====== */
-  const analyticsApi = useAnalytics();
-  const { analytics, update } = analyticsApi;
-
-  /* ========== UI HELPERS ========== */
   const VideoSpace: React.FC<{ title: string }> = ({ title }) => (
-    <Card
-      title={`Por qué es importante: ${title}`}
-      subtitle="(Video corto explicativo)"
-      width={900}
-    >
+    <Card title={`Por qué es importante: ${title}`} subtitle="(Video corto explicativo)" width={900}>
       <div
         style={{
           width: "100%",
@@ -996,37 +915,14 @@ export default function App() {
     defaultSec,
   }) => (
     <div style={{ ...panelBox, textAlign: "center" }}>
-      {label && (
-        <div style={{ fontWeight: 900, color: theme.azul, marginBottom: 6 }}>
-          {label}
-        </div>
-      )}
-      <div
-        style={{
-          fontSize: 64,
-          fontWeight: 900,
-          letterSpacing: 1,
-          marginBottom: 12,
-        }}
-      >
+      {label && <div style={{ fontWeight: 900, color: theme.azul, marginBottom: 6 }}>{label}</div>}
+      <div style={{ fontSize: 64, fontWeight: 900, letterSpacing: 1, marginBottom: 12 }}>
         {mmss(flow.remaining)}
       </div>
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          justifyContent: "center",
-          flexWrap: "wrap",
-        }}
-      >
+      <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
         <Btn onClick={() => startTimer()} label="▶ Iniciar" full={false} />
         <Btn onClick={() => pauseTimer()} label="⏸ Pausa" full={false} />
-        <Btn
-          onClick={() => resetTimer(defaultSec)}
-          label="⟲ Reset"
-          full={false}
-          variant="outline"
-        />
+        <Btn onClick={() => resetTimer(defaultSec)} label="⟲ Reset" full={false} variant="outline" />
       </div>
     </div>
   );
@@ -1042,20 +938,13 @@ export default function App() {
     [storageTick, flow.roomCode, flow.expectedTeams]
   );
 
-  /* ========== SCREENS ========== */
-
-  // Landing
   if (mode === "inicio")
     return (
       <div style={appStyles}>
         <Background />
         <GlobalFormCSS />
         <AutoCenter>
-          <Card
-            title="Juego de Emprendimiento UDD"
-            subtitle="Selecciona tu perfil"
-            width={900}
-          >
+          <Card title="Juego de Emprendimiento UDD" subtitle="Selecciona tu perfil" width={900}>
             <div
               style={{
                 display: "flex",
@@ -1066,24 +955,14 @@ export default function App() {
               }}
             >
               <Btn onClick={() => setMode("prof")} label="Profesor" />
-              <Btn
-                onClick={() => setMode("alumno")}
-                bg={theme.rosa}
-                label="Alumno"
-              />
-              <Btn
-                onClick={() => setMode("admin")}
-                bg={theme.amarillo}
-                fg={theme.texto}
-                label="Administrador"
-              />
+              <Btn onClick={() => setMode("alumno")} bg={theme.rosa} label="Alumno" />
+              <Btn onClick={() => setMode("admin")} bg={theme.amarillo} fg={theme.texto} label="Administrador" />
             </div>
           </Card>
         </AutoCenter>
       </div>
     );
 
-  /* =====================  ADMIN  ===================== */
   if (mode === "admin") {
     return (
       <div style={appStyles}>
@@ -1111,31 +990,17 @@ export default function App() {
     );
   }
 
-  // ====== PROFESOR ======
   if (mode === "prof") {
     return (
       <div style={appStyles}>
         <Background />
         <GlobalFormCSS />
         <AutoCenter>
-          {/* Crear sala */}
           {!flow.roomCode ? (
-            <Card
-              title="Crear Nueva Sala"
-              subtitle="Define cantidad de equipos"
-              width={820}
-            >
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                }}
-              >
+            <Card title="Crear Nueva Sala" subtitle="Define cantidad de equipos" width={820}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
-                  <label
-                    style={{ fontSize: 12, fontWeight: 800, color: theme.azul }}
-                  >
+                  <label style={{ fontSize: 12, fontWeight: 800, color: theme.azul }}>
                     Cantidad de equipos
                   </label>
                   <select
@@ -1168,11 +1033,7 @@ export default function App() {
                         remaining: 6 * 60,
                         running: false,
                       });
-                      // Analítica: room creada
-                      update((a) => ({
-                        ...a,
-                        roomsCreated: a.roomsCreated + 1,
-                      }));
+                      update((a) => ({ ...a, roomsCreated: a.roomsCreated + 1 }));
                     }}
                     bg={theme.rosa}
                     label="Generar Código"
@@ -1182,18 +1043,12 @@ export default function App() {
             </Card>
           ) : null}
 
-          {/* Lobby */}
           {flow.roomCode && flow.step === "lobby" && (
-            <Card
-              title="Sala creada"
-              subtitle="Comparte el código y espera a los equipos"
-              width={700}
-            >
+            <Card title="Sala creada" subtitle="Comparte el código y espera a los equipos" width={700}>
               <div
                 style={{
                   fontSize: 32,
-                  fontFamily:
-                    "Roboto Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
+                  fontFamily: "Roboto Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
                   marginBottom: 8,
                   color: theme.azul,
                 }}
@@ -1214,15 +1069,10 @@ export default function App() {
             </Card>
           )}
 
-          {/* F1 */}
           {flow.step === "f1_video" && (
             <>
               <VideoSpace title="Trabajo en equipo" />
-              <Btn
-                onClick={() => setStep("f1_instr")}
-                label="Continuar con todos"
-                full={false}
-              />
+              <Btn onClick={() => setStep("f1_instr")} label="Continuar con todos" full={false} />
             </>
           )}
           {flow.step === "f1_instr" && (
@@ -1246,53 +1096,24 @@ export default function App() {
             </>
           )}
           {flow.step === "f1_activity" && (
-            <Card
-              title="Fase 1 — En curso"
-              subtitle="Timer visible para todos"
-              width={720}
-            >
-              <BigTimer
-                label="Tiempo F1 (Diferencias/Matriz)"
-                defaultSec={6 * 60}
-              />
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  marginTop: 12,
-                }}
-              >
-                <Btn
-                  onClick={() => setStep("f1_rank")}
-                  label="Terminar y ver ranking"
-                  full={false}
-                />
+            <Card title="Fase 1 — En curso" subtitle="Timer visible para todos" width={720}>
+              <BigTimer label="Tiempo F1 (Diferencias/Matriz)" defaultSec={6 * 60} />
+              <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+                <Btn onClick={() => setStep("f1_rank")} label="Terminar y ver ranking" full={false} />
               </div>
             </Card>
           )}
           {flow.step === "f1_rank" && (
-            <Card
-              title="Ranking — Fase 1"
-              subtitle="Resultados en vivo"
-              width={900}
-            >
+            <Card title="Ranking — Fase 1" subtitle="Resultados en vivo" width={900}>
               <ConfettiBurst />
-              <RankingBars
-                data={ranking}
-                onContinue={() => setStep("f2_video")}
-              />
+              <RankingBars data={ranking} onContinue={() => setStep("f2_video")} />
             </Card>
           )}
 
-          {/* F2 */}
           {flow.step === "f2_video" && (
             <>
               <VideoSpace title="Empatía con el usuario" />
-              <Btn
-                onClick={() => setStep("f2_instr")}
-                label="Continuar con todos"
-                full={false}
-              />
+              <Btn onClick={() => setStep("f2_instr")} label="Continuar con todos" full={false} />
             </>
           )}
           {flow.step === "f2_instr" && (
@@ -1304,20 +1125,12 @@ export default function App() {
                   "Completen el <b>mapa de empatía</b> (8:00).",
                 ]}
               />
-              <Btn
-                onClick={() => setStep("f2_theme")}
-                label="Ir a Temática y Desafío"
-                full={false}
-              />
+              <Btn onClick={() => setStep("f2_theme")} label="Ir a Temática y Desafío" full={false} />
             </>
           )}
           {flow.step === "f2_theme" && (
             <>
-              <Card
-                title="Temáticas y desafío"
-                subtitle="Cuando estén listos, inicia el mapa"
-                width={980}
-              >
+              <Card title="Temáticas y desafío" subtitle="Cuando estén listos, inicia el mapa" width={980}>
                 <ThemeChallengeSection
                   THEMES={THEMES}
                   temaSel={temaSel}
@@ -1328,16 +1141,9 @@ export default function App() {
                   isTablet={isTablet}
                   onContinue={() => {}}
                 />
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    marginTop: 12,
-                  }}
-                >
+                <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
                   <Btn
                     onClick={() => {
-                      // Analítica: contar uso de desafío elegido al abrir la actividad
                       update((a) => {
                         const key = `${temaSel}#${desafioIndex}`;
                         const usage = { ...a.challengeUsage };
@@ -1355,41 +1161,19 @@ export default function App() {
             </>
           )}
           {flow.step === "f2_activity" && (
-            <Card
-              title="Fase 2 — En curso"
-              subtitle="Mapa de empatía (timer)"
-              width={720}
-            >
+            <Card title="Fase 2 — En curso" subtitle="Mapa de empatía (timer)" width={720}>
               <BigTimer label="Tiempo F2 (Empatía)" defaultSec={8 * 60} />
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  marginTop: 12,
-                }}
-              >
-                <Btn
-                  onClick={() => setStep("f2_rank")}
-                  label="Terminar y ver ranking"
-                  full={false}
-                />
+              <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+                <Btn onClick={() => setStep("f2_rank")} label="Terminar y ver ranking" full={false} />
               </div>
             </Card>
           )}
           {flow.step === "f2_rank" && (
-            <Card
-              title="Ranking — Fase 2"
-              subtitle="Resultados en vivo"
-              width={900}
-            >
-              <RankingBars
-                data={ranking}
-                onContinue={() => setStep("f3_video")}
-              />
+            <Card title="Ranking — Fase 2" subtitle="Resultados en vivo" width={900}>
+              <RankingBars data={ranking} onContinue={() => setStep("f3_video")} />
             </Card>
           )}
 
-          {/* F3 */}
           {flow.step === "f3_video" && (
             <>
               <VideoSpace title="Creatividad" />
@@ -1404,41 +1188,19 @@ export default function App() {
             </>
           )}
           {flow.step === "f3_activity" && (
-            <Card
-              title="Fase 3 — En curso"
-              subtitle="Creatividad (timer)"
-              width={720}
-            >
+            <Card title="Fase 3 — En curso" subtitle="Creatividad (timer)" width={720}>
               <BigTimer label="Tiempo F3 (Creatividad)" defaultSec={12 * 60} />
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  marginTop: 12,
-                }}
-              >
-                <Btn
-                  onClick={() => setStep("f3_rank")}
-                  label="Terminar y ver ranking"
-                  full={false}
-                />
+              <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+                <Btn onClick={() => setStep("f3_rank")} label="Terminar y ver ranking" full={false} />
               </div>
             </Card>
           )}
           {flow.step === "f3_rank" && (
-            <Card
-              title="Ranking — Fase 3"
-              subtitle="Resultados en vivo"
-              width={900}
-            >
-              <RankingBars
-                data={ranking}
-                onContinue={() => setStep("f4_video")}
-              />
+            <Card title="Ranking — Fase 3" subtitle="Resultados en vivo" width={900}>
+              <RankingBars data={ranking} onContinue={() => setStep("f4_video")} />
             </Card>
           )}
 
-          {/* F4 */}
           {flow.step === "f4_video" && (
             <>
               <VideoSpace title="Comunicación" />
@@ -1453,33 +1215,15 @@ export default function App() {
             </>
           )}
           {flow.step === "f4_prep" && (
-            <Card
-              title="Fase 4 — Preparación del Pitch"
-              subtitle="Timer visible"
-              width={720}
-            >
+            <Card title="Fase 4 — Preparación del Pitch" subtitle="Timer visible" width={720}>
               <BigTimer label="Tiempo F4 (Preparación)" defaultSec={8 * 60} />
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  marginTop: 12,
-                }}
-              >
-                <Btn
-                  onClick={() => setStep("f4_pitch")}
-                  label="Ir a zona de Pitch"
-                  full={false}
-                />
+              <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+                <Btn onClick={() => setStep("f4_pitch")} label="Ir a zona de Pitch" full={false} />
               </div>
             </Card>
           )}
           {flow.step === "f4_pitch" && (
-            <Card
-              title="Zona de Pitch"
-              subtitle="Presentaciones de 90s (demo)"
-              width={900}
-            >
+            <Card title="Zona de Pitch" subtitle="Presentaciones de 90s (demo)" width={900}>
               <div
                 style={{
                   width: "100%",
@@ -1497,90 +1241,43 @@ export default function App() {
               >
                 Área de presentación (sin temporizador)
               </div>
-              <Btn
-                onClick={() => setStep("f5_video")}
-                label="Continuar con todos"
-                full={false}
-              />
+              <Btn onClick={() => setStep("f5_video")} label="Continuar con todos" full={false} />
             </Card>
           )}
 
-          {/* F5 */}
           {flow.step === "f5_video" && (
             <>
               <VideoSpace title="Evaluación y retroalimentación" />
-              <Btn
-                onClick={() => setStep("f5_eval")}
-                label="Abrir evaluación"
-                full={false}
-              />
+              <Btn onClick={() => setStep("f5_eval")} label="Abrir evaluación" full={false} />
             </>
           )}
           {flow.step === "f5_eval" && (
-            <Card
-              title="Fase 5 — Evaluación"
-              subtitle="Cada equipo califica (demo)"
-              width={900}
-            >
+            <Card title="Fase 5 — Evaluación" subtitle="Cada equipo califica (demo)" width={900}>
               <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
-                (En tu versión final conectaremos formularios/criterios; aquí
-                solo continuamos)
+                (En tu versión final conectaremos formularios/criterios; aquí solo continuamos)
               </div>
-              <Btn
-                onClick={() => setStep("f5_rank")}
-                label="Ver ranking"
-                full={false}
-              />
+              <Btn onClick={() => setStep("f5_rank")} label="Ver ranking" full={false} />
             </Card>
           )}
           {flow.step === "f5_rank" && (
-            <Card
-              title="Ranking — Fase 5"
-              subtitle="Resultados en vivo"
-              width={900}
-            >
-              <RankingBars
-                data={ranking}
-                onContinue={() => setStep("f6_video")}
-              />
+            <Card title="Ranking — Fase 5" subtitle="Resultados en vivo" width={900}>
+              <RankingBars data={ranking} onContinue={() => setStep("f6_video")} />
             </Card>
           )}
 
-          {/* F6 */}
           {flow.step === "f6_video" && (
             <>
               <VideoSpace title="Cierre y reflexión" />
-              <Btn
-                onClick={() => setStep("f6_close")}
-                label="Ir a cierre"
-                full={false}
-              />
+              <Btn onClick={() => setStep("f6_close")} label="Ir a cierre" full={false} />
             </>
           )}
           {flow.step === "f6_close" && (
-            <Card
-              title="Cierre y Apoyo"
-              subtitle="Reflexión final (demo)"
-              width={900}
-              tight
-            >
+            <Card title="Cierre y Apoyo" subtitle="Reflexión final (demo)" width={900} tight>
               <div style={{ textAlign: "left" }}>
-                <p style={{ marginTop: 0 }}>
-                  🎉 ¡Felicitaciones! Escribe tu reflexión final.
-                </p>
-                <textarea
-                  placeholder="Escribe tu reflexión..."
-                  style={{ ...baseInput, minHeight: 120 }}
-                />
+                <p style={{ marginTop: 0 }}>🎉 ¡Felicitaciones! Escribe tu reflexión final.</p>
+                <textarea placeholder="Escribe tu reflexión..." style={{ ...baseInput, minHeight: 120 }} />
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  gap: 10,
-                  marginTop: 12,
-                }}
-              >
+              <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 12 }}>
                 <Btn
                   onClick={() => setStep("qr")}
                   bg={theme.azul}
@@ -1591,11 +1288,7 @@ export default function App() {
             </Card>
           )}
           {flow.step === "qr" && (
-            <Card
-              title="¡Evalúa el juego!"
-              subtitle="Escanea el código QR con tu celular"
-              width={700}
-            >
+            <Card title="¡Evalúa el juego!" subtitle="Escanea el código QR con tu celular" width={700}>
               <div
                 style={{
                   width: 260,
@@ -1643,30 +1336,19 @@ export default function App() {
     );
   }
 
-  // ====== ALUMNO ======
   if (mode === "alumno") {
     return (
       <div style={appStyles}>
         <Background />
         <GlobalFormCSS />
         <AutoCenter>
-          {/* Unirse a sala */}
           {!flow.roomCode && (
-            <Card
-              title="Alumno"
-              subtitle="Ingresa el código de sala para continuar"
-              width={520}
-            >
+            <Card title="Alumno" subtitle="Ingresa el código de sala para continuar" width={520}>
               <input
                 placeholder="Código de sala"
                 value={roomCode}
                 onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                style={{
-                  ...baseInput,
-                  textAlign: "center",
-                  fontWeight: 700,
-                  marginBottom: 14,
-                }}
+                style={{ ...baseInput, textAlign: "center", fontWeight: 700, marginBottom: 14 }}
               />
               <Btn
                 onClick={() => {
@@ -1683,22 +1365,12 @@ export default function App() {
                 }}
                 label="Entrar a la sala"
               />
-              <Btn
-                onClick={() => setMode("inicio")}
-                bg={theme.amarillo}
-                fg={theme.texto}
-                label="⬅ Back"
-              />
+              <Btn onClick={() => setMode("inicio")} bg={theme.amarillo} fg={theme.texto} label="⬅ Back" />
             </Card>
           )}
 
-          {/* Crear grupo */}
           {flow.roomCode && !teamReady && (
-            <Card
-              title={`Sala ${flow.roomCode}`}
-              subtitle="Crea tu grupo y marca listo"
-              width={980}
-            >
+            <Card title={`Sala ${flow.roomCode}`} subtitle="Crea tu grupo y marca listo" width={980}>
               <div
                 style={{
                   display: "grid",
@@ -1713,13 +1385,7 @@ export default function App() {
                   onChange={(e) => setGroupName(e.target.value)}
                   style={baseInput}
                 />
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 10,
-                  }}
-                >
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <input
                     placeholder="Tu nombre"
                     value={miNombre}
@@ -1738,10 +1404,7 @@ export default function App() {
                     if (!groupName.trim()) return;
                     setIntegrantes((arr) => [
                       ...arr,
-                      {
-                        nombre: miNombre || "Integrante",
-                        carrera: miCarrera || "—",
-                      },
+                      { nombre: miNombre || "Integrante", carrera: miCarrera || "—" },
                     ]);
                     setMiNombre("");
                     setMiCarrera("");
@@ -1763,9 +1426,7 @@ export default function App() {
                   background: "#fff",
                 }}
               >
-                {integrantes.length === 0 && (
-                  <div style={{ opacity: 0.7 }}>Aún no hay integrantes…</div>
-                )}
+                {integrantes.length === 0 && <div style={{ opacity: 0.7 }}>Aún no hay integrantes…</div>}
                 {integrantes.map((p, i) => (
                   <div
                     key={i}
@@ -1775,13 +1436,10 @@ export default function App() {
                       gap: 10,
                       padding: "8px 0",
                       alignItems: "center",
-                      borderBottom:
-                        i < integrantes.length - 1 ? "1px solid #eee" : "none",
+                      borderBottom: i < integrantes.length - 1 ? "1px solid #eee" : "none",
                     }}
                   >
-                    <div style={{ fontWeight: 800, color: theme.azul }}>
-                      {i + 1}.
-                    </div>
+                    <div style={{ fontWeight: 800, color: theme.azul }}>{i + 1}.</div>
                     <div style={{ fontWeight: 700 }}>{p.nombre}</div>
                     <div style={{ opacity: 0.8 }}>{p.carrera}</div>
                   </div>
@@ -1797,30 +1455,14 @@ export default function App() {
                   flexWrap: "wrap",
                 }}
               >
-                <Btn
-                  onClick={() => setMode("inicio")}
-                  bg={theme.amarillo}
-                  fg={theme.texto}
-                  label="⬅ Back"
-                  full={false}
-                />
-                <Btn
-                  onClick={markReady}
-                  label="Marcar listo y esperar al profesor"
-                  full={false}
-                  disabled={!groupName.trim()}
-                />
+                <Btn onClick={() => setMode("inicio")} bg={theme.amarillo} fg={theme.texto} label="⬅ Back" full={false} />
+                <Btn onClick={markReady} label="Marcar listo y esperar al profesor" full={false} disabled={!groupName.trim()} />
               </div>
             </Card>
           )}
 
-          {/* Espera */}
           {flow.roomCode && teamReady && flow.step === "lobby" && (
-            <Card
-              title="Esperando al profesor…"
-              subtitle="Tu grupo está listo"
-              width={720}
-            >
+            <Card title="Esperando al profesor…" subtitle="Tu grupo está listo" width={720}>
               <div
                 style={{
                   width: "100%",
@@ -1838,13 +1480,10 @@ export default function App() {
               >
                 Pantalla de espera
               </div>
-              <div style={{ fontSize: 13, opacity: 0.85 }}>
-                Esperando a que el profesor continúe…
-              </div>
+              <div style={{ fontSize: 13, opacity: 0.85 }}>Esperando a que el profesor continúe…</div>
             </Card>
           )}
 
-          {/* ======== FASE 1 (Alumno con pestañas) ======== */}
           {flow.step === "f1_video" && <VideoSpace title="Trabajo en equipo" />}
           {flow.step === "f1_instr" && (
             <Instructions
@@ -1857,38 +1496,19 @@ export default function App() {
             />
           )}
           {flow.step === "f1_activity" && (
-            <Card
-              title="Fase 1 — Actividades"
-              subtitle={`Tiempo: ${mmss(flow.remaining)} · Monedas: ${coins}`}
-              width={1100}
-            >
-              {/* Tabs */}
-              <div
-                style={{
-                  position: "sticky",
-                  top: 12,
-                  zIndex: 5,
-                  background: "transparent",
-                  paddingBottom: 6,
-                  marginBottom: 10,
-                }}
-              >
+            <Card title="Fase 1 — Actividades" subtitle={`Tiempo: ${mmss(flow.remaining)} · Monedas: ${coins}`} width={1100}>
+              <div style={{ position: "sticky", top: 12, zIndex: 5, paddingBottom: 6, marginBottom: 10 }}>
                 <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
-                  {[
-                    { key: "spot", label: "🔎 Diferencias" },
-                    { key: "matrix", label: "🔲 Matriz" },
-                  ].map((t) => {
+                  {[{ key: "spot", label: "🔎 Diferencias" }, { key: "matrix", label: "🔲 Matriz" }].map((t) => {
                     const active = f1Tab === (t.key as "spot" | "matrix");
                     return (
                       <button
-                        key={t.key}
+                        key={String(t.key)}
                         onClick={() => setF1Tab(t.key as "spot" | "matrix")}
                         style={{
                           padding: "8px 12px",
                           borderRadius: 12,
-                          border: `2px solid ${
-                            active ? theme.rosa : theme.border
-                          }`,
+                          border: `2px solid ${active ? theme.rosa : theme.border}`,
                           background: active ? "#FFF3F7" : "#fff",
                           fontWeight: 800,
                           cursor: "pointer",
@@ -1902,22 +1522,12 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Contenido por tab */}
               {f1Tab === "spot" ? (
                 <>
                   <div style={{ fontSize: 13, marginBottom: 8, opacity: 0.9 }}>
-                    Toca en la <b>imagen izquierda</b> donde veas una
-                    diferencia. Puedes usar hasta 2 pistas (−1 moneda).
+                    Toca en la <b>imagen izquierda</b> donde veas una diferencia. Puedes usar hasta 2 pistas (−1 moneda).
                   </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: isTablet ? "1fr" : "1fr 1fr",
-                      gap: 16,
-                    }}
-                  >
-                    {/* izquierda: clickeable */}
+                  <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "1fr 1fr", gap: 16 }}>
                     <div
                       ref={spotRef}
                       onClick={clickSpot}
@@ -1932,29 +1542,11 @@ export default function App() {
                         border: `1px solid ${theme.border}`,
                       }}
                     >
-                      <svg
-                        viewBox="0 0 100 100"
-                        preserveAspectRatio="none"
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          width: "100%",
-                          height: "100%",
-                        }}
-                      >
-                        <rect
-                          x="5"
-                          y="10"
-                          width="20"
-                          height="20"
-                          fill="#90CAF9"
-                        />
+                      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+                        <rect x="5" y="10" width="20" height="20" fill="#90CAF9" />
                         <circle cx="50" cy="25" r="10" fill="#F48FB1" />
                         <polygon points="80,15 90,35 70,35" fill="#A5D6A7" />
-                        <polygon
-                          points="30,70 40,90 20,90"
-                          fill={theme.amarillo}
-                        />
+                        <polygon points="30,70 40,90 20,90" fill={theme.amarillo} />
                       </svg>
                       <div
                         style={{
@@ -1998,47 +1590,15 @@ export default function App() {
                           />
                         ))}
                     </div>
-
-                    {/* derecha: referencia */}
-                    <div
-                      style={{
-                        position: "relative",
-                        width: "100%",
-                        aspectRatio: "16/7",
-                        ...panelBox,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <svg
-                        viewBox="0 0 100 100"
-                        preserveAspectRatio="none"
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          width: "100%",
-                          height: "100%",
-                        }}
-                      >
-                        <rect
-                          x="5"
-                          y="10"
-                          width="20"
-                          height="22"
-                          fill="#90CAF9"
-                        />
+                    <div style={{ position: "relative", width: "100%", aspectRatio: "16/7", ...panelBox, overflow: "hidden" }}>
+                      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+                        <rect x="5" y="10" width="20" height="22" fill="#90CAF9" />
                         <circle cx="50" cy="25" r="9" fill="#F48FB1" />
                         <polygon points="82,17 92,37 72,37" fill="#A5D6A7" />
-                        <rect
-                          x="22"
-                          y="80"
-                          width="16"
-                          height="8"
-                          fill={theme.amarillo}
-                        />
+                        <rect x="22" y="80" width="16" height="8" fill={theme.amarillo} />
                       </svg>
                     </div>
                   </div>
-
                   <div
                     style={{
                       display: "flex",
@@ -2050,8 +1610,7 @@ export default function App() {
                     }}
                   >
                     <div style={{ fontSize: 13, opacity: 0.8 }}>
-                      Encontradas: {diffs.filter((d) => d.found).length}/4 ·
-                      Pistas: {hintsLeft}
+                      Encontradas: {diffs.filter((d) => d.found).length}/4 · Pistas: {hintsLeft}
                     </div>
                     <Btn
                       onClick={useHint}
@@ -2066,8 +1625,7 @@ export default function App() {
               ) : (
                 <>
                   <div style={{ fontSize: 13, marginBottom: 8, opacity: 0.9 }}>
-                    Reproduce el <b>patrón objetivo</b> en tu tablero. El tiempo
-                    sigue corriendo.
+                    Reproduce el <b>patrón objetivo</b> en tu tablero. El tiempo sigue corriendo.
                   </div>
                   <div
                     style={{
@@ -2079,26 +1637,14 @@ export default function App() {
                   >
                     <div style={panelBox}>
                       <div style={badgeTitle}>Patrón objetivo</div>
-                      <GridView
-                        readOnly
-                        grid={goal}
-                        size={5}
-                        onClickCell={() => {}}
-                      />
-                      <div style={smallHint}>
-                        Celdas encendidas: {goal.flat().filter(Boolean).length}
-                      </div>
+                      <GridView readOnly grid={goal} size={5} onClickCell={() => {}} />
+                      <div style={smallHint}>Celdas encendidas: {goal.flat().filter(Boolean).length}</div>
                     </div>
                     <div style={panelBox}>
                       <div style={badgeTitle}>Tablero del equipo</div>
                       <GridView grid={grid} size={5} onClickCell={toggleCell} />
                       <div style={smallHint}>
-                        Progreso:{" "}
-                        {
-                          grid.flat().filter((v, i) => v === goal.flat()[i])
-                            .length
-                        }
-                        /{5 * 5} coincidencias
+                        Progreso: {grid.flat().filter((v, i) => v === goal.flat()[i]).length}/{5 * 5} coincidencias
                       </div>
                     </div>
                   </div>
@@ -2107,10 +1653,7 @@ export default function App() {
             </Card>
           )}
 
-          {/* ======== FASE 2 ======== */}
-          {flow.step === "f2_video" && (
-            <VideoSpace title="Empatía con el usuario" />
-          )}
+          {flow.step === "f2_video" && <VideoSpace title="Empatía con el usuario" />}
           {flow.step === "f2_instr" && (
             <Instructions
               title="Fase 2 — Empatía"
@@ -2121,11 +1664,7 @@ export default function App() {
             />
           )}
           {flow.step === "f2_theme" && (
-            <Card
-              title="Temática y desafío"
-              subtitle="Esperando al profesor para iniciar el mapa"
-              width={980}
-            >
+            <Card title="Temática y desafío" subtitle="Esperando al profesor para iniciar el mapa" width={980}>
               <ThemeChallengeSection
                 THEMES={THEMES}
                 temaSel={temaSel}
@@ -2159,7 +1698,6 @@ export default function App() {
             </Card>
           )}
 
-          {/* ======== FASE 3 ======== */}
           {flow.step === "f3_video" && <VideoSpace title="Creatividad" />}
           {flow.step === "f3_activity" && (
             <Card
@@ -2176,26 +1714,14 @@ export default function App() {
                 }}
               >
                 <div>
-                  <p style={{ marginTop: 0 }}>
-                    Sube una foto de tu solución (demo):
-                  </p>
+                  <p style={{ marginTop: 0 }}>Sube una foto de tu solución (demo):</p>
                   <input type="file" accept="image/*" />
                 </div>
                 <div>
                   <p style={{ marginTop: 0 }}>Mini-retos (3 monedas c/u):</p>
                   <div style={{ display: "grid", gap: 8 }}>
-                    {[
-                      "Prototipo montado",
-                      "Solución explicada",
-                      "Foto clara",
-                    ].map((r) => (
-                      <Btn
-                        key={r}
-                        onClick={() => setCoins((c) => c + 3)}
-                        bg={"#C8E6C9"}
-                        fg={"#1B5E20"}
-                        label={`✔ ${r}`}
-                      />
+                    {["Prototipo montado", "Solución explicada", "Foto clara"].map((r) => (
+                      <Btn key={r} onClick={() => setCoins((c) => c + 3)} bg={"#C8E6C9"} fg={"#1B5E20"} label={`✔ ${r}`} />
                     ))}
                   </div>
                 </div>
@@ -2203,59 +1729,29 @@ export default function App() {
             </Card>
           )}
 
-          {/* ======== FASE 4 ======== */}
           {flow.step === "f4_video" && <VideoSpace title="Comunicación" />}
           {flow.step === "f4_prep" && (
-            <Card
-              title="Etapa 4 — Comunicación (preparación)"
-              subtitle={`Tiempo: ${mmss(flow.remaining)}`}
-              width={1100}
-              tight
-            >
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isTablet ? "1fr" : "380px 1fr",
-                  gap: 12,
-                  textAlign: "left",
-                }}
-              >
+            <Card title="Etapa 4 — Comunicación (preparación)" subtitle={`Tiempo: ${mmss(flow.remaining)}`} width={1100} tight>
+              <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "380px 1fr", gap: 12, textAlign: "left" }}>
                 <div style={{ ...panelBox }}>
                   <div style={badgeTitle}>Estructura recomendada</div>
                   <ol style={{ marginTop: 0, paddingLeft: 18 }}>
-                    <li>
-                      <b>Hook</b> (problema en 1 frase)
-                    </li>
-                    <li>
-                      <b>Usuario</b> y evidencia breve
-                    </li>
-                    <li>
-                      <b>Solución</b> y cómo funciona
-                    </li>
-                    <li>
-                      <b>Valor</b> (qué mejora, métricas)
-                    </li>
-                    <li>
-                      <b>Impacto</b> y próximos pasos
-                    </li>
+                    <li><b>Hook</b> (problema en 1 frase)</li>
+                    <li><b>Usuario</b> y evidencia breve</li>
+                    <li><b>Solución</b> y cómo funciona</li>
+                    <li><b>Valor</b> (qué mejora, métricas)</li>
+                    <li><b>Impacto</b> y próximos pasos</li>
                   </ol>
                 </div>
                 <div style={{ ...panelBox }}>
                   <div style={badgeTitle}>Borrador del pitch</div>
-                  <textarea
-                    placeholder="Escribe tu pitch..."
-                    style={{ ...baseInput, minHeight: 260 }}
-                  />
+                  <textarea placeholder="Escribe tu pitch..." style={{ ...baseInput, minHeight: 260 }} />
                 </div>
               </div>
             </Card>
           )}
           {flow.step === "f4_pitch" && (
-            <Card
-              title="Zona de Pitch"
-              subtitle="Esperando el turno del equipo"
-              width={900}
-            >
+            <Card title="Zona de Pitch" subtitle="Esperando el turno del equipo" width={900}>
               <div
                 style={{
                   width: "100%",
@@ -2276,56 +1772,25 @@ export default function App() {
             </Card>
           )}
 
-          {/* ======== FASE 5 ======== */}
-          {flow.step === "f5_video" && (
-            <VideoSpace title="Evaluación y retroalimentación" />
-          )}
+          {flow.step === "f5_video" && <VideoSpace title="Evaluación y retroalimentación" />}
           {flow.step === "f5_eval" && (
-            <Card
-              title="Etapa 5 — Evaluación"
-              subtitle="Completa las evaluaciones (demo)"
-              width={900}
-            >
-              <div style={{ fontSize: 13, opacity: 0.8 }}>
-                (En producción conectaremos formularios de evaluación.)
-              </div>
+            <Card title="Etapa 5 — Evaluación" subtitle="Completa las evaluaciones (demo)" width={900}>
+              <div style={{ fontSize: 13, opacity: 0.8 }}>(En producción conectaremos formularios de evaluación.)</div>
             </Card>
           )}
 
-          {/* ======== FASE 6 / QR ======== */}
-          {flow.step === "f6_video" && (
-            <VideoSpace title="Cierre y reflexión" />
-          )}
+          {flow.step === "f6_video" && <VideoSpace title="Cierre y reflexión" />}
           {flow.step === "f6_close" && (
-            <Card
-              title="Cierre y Apoyo"
-              subtitle={`Monedas finales: ${coins}`}
-              width={900}
-              tight
-            >
+            <Card title="Cierre y Apoyo" subtitle={`Monedas finales: ${coins}`} width={900} tight>
               <div style={{ textAlign: "left" }}>
-                <p style={{ marginTop: 0 }}>
-                  🎉 ¡Felicitaciones! Escribe tu reflexión final.
-                </p>
-                <textarea
-                  id="reflexionText"
-                  placeholder="Escribe tu reflexión..."
-                  style={{ ...baseInput, minHeight: 120 }}
-                />
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    marginTop: 8,
-                  }}
-                >
+                <p style={{ marginTop: 0 }}>🎉 ¡Felicitaciones! Escribe tu reflexión final.</p>
+                <textarea id="reflexionText" placeholder="Escribe tu reflexión..." style={{ ...baseInput, minHeight: 120 }} />
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
                   <Btn
                     label="Enviar reflexión"
                     full={false}
                     onClick={() => {
-                      const ta = document.getElementById(
-                        "reflexionText"
-                      ) as HTMLTextAreaElement | null;
+                      const ta = document.getElementById("reflexionText") as HTMLTextAreaElement | null;
                       const text = (ta?.value || "").trim();
                       if (!text) {
                         alert("Escribe una reflexión primero");
@@ -2336,16 +1801,11 @@ export default function App() {
                         ...a,
                         reflections: [
                           ...a.reflections,
-                          {
-                            roomCode: flow.roomCode,
-                            teamName,
-                            text,
-                            ts: Date.now(),
-                          },
+                          { roomCode: flow.roomCode, teamName, text, ts: Date.now() },
                         ],
                       }));
                       alert("¡Gracias! Reflexión registrada.");
-                      ta!.value = "";
+                      if (ta) ta.value = "";
                     }}
                   />
                 </div>
@@ -2353,11 +1813,7 @@ export default function App() {
             </Card>
           )}
           {flow.step === "qr" && (
-            <Card
-              title="¡Evalúa el juego!"
-              subtitle="Escanea el código QR con tu celular"
-              width={700}
-            >
+            <Card title="¡Evalúa el juego!" subtitle="Escanea el código QR con tu celular" width={700}>
               <div
                 style={{
                   width: 260,
@@ -2476,7 +1932,6 @@ function ThemeChallengeSection({
           alignItems: "start",
         }}
       >
-        {/* izquierda: desafíos */}
         <div style={panelBox}>
           <div style={{ ...badgeTitle, marginBottom: 8 }}>Desafíos</div>
           <div style={{ display: "grid", gap: 8 }}>
@@ -2503,11 +1958,8 @@ function ThemeChallengeSection({
           </div>
         </div>
 
-        {/* centro: video */}
         <div style={{ ...panelBox, padding: 10 }}>
-          <div style={{ ...badgeTitle, marginBottom: 6 }}>
-            Video de contexto
-          </div>
+          <div style={{ ...badgeTitle, marginBottom: 6 }}>Video de contexto</div>
           <div
             style={{
               width: "100%",
@@ -2526,7 +1978,6 @@ function ThemeChallengeSection({
           </div>
         </div>
 
-        {/* derecha: detalle */}
         <div style={{ ...panelBox, textAlign: "left", padding: 16 }}>
           <div style={{ fontWeight: 900, color: theme.rosa, marginBottom: 6 }}>
             {desafioActual.titulo}
@@ -2563,12 +2014,9 @@ function ThemeChallengeSection({
             </div>
             <div>
               <div style={{ fontWeight: 800, color: theme.azul }}>
-                {THEMES[temaSel].persona.nombre} ·{" "}
-                {THEMES[temaSel].persona.edad} años
+                {THEMES[temaSel].persona.nombre} · {THEMES[temaSel].persona.edad} años
               </div>
-              <div style={{ fontSize: 13, opacity: 0.85 }}>
-                {THEMES[temaSel].persona.bio}
-              </div>
+              <div style={{ fontSize: 13, opacity: 0.85 }}>{THEMES[temaSel].persona.bio}</div>
             </div>
           </div>
 
@@ -2604,7 +2052,6 @@ function EmpathySection(props: any) {
         textAlign: "left",
       }}
     >
-      {/* Bubble map */}
       <div
         style={{
           position: "relative",
@@ -2652,9 +2099,7 @@ function EmpathySection(props: any) {
                 color: theme.texto,
                 fontWeight: 800,
                 cursor: "pointer",
-                boxShadow: active
-                  ? "0 0 0 6px rgba(25,118,210,.15)"
-                  : "0 6px 14px rgba(0,0,0,.08)",
+                boxShadow: active ? "0 0 0 6px rgba(25,118,210,.15)" : "0 6px 14px rgba(0,0,0,.08)",
               }}
             >
               {filled ? "✔ " : ""}
@@ -2664,7 +2109,6 @@ function EmpathySection(props: any) {
         })}
       </div>
 
-      {/* Editor */}
       <div style={panelBox}>
         <div style={{ fontWeight: 900, color: theme.azul, marginBottom: 6 }}>
           {EMPATIA_FIELDS.find((x: any) => x.key === activeBubble)?.label}
@@ -2678,12 +2122,10 @@ function EmpathySection(props: any) {
           style={{ ...baseInput, minHeight: 160 }}
         />
         <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
-          Consejos: ejemplos concretos, verbos en acción, datos o citas del
-          usuario.
+          Consejos: ejemplos concretos, verbos en acción, datos o citas del usuario.
         </div>
         <div style={{ fontSize: 13, opacity: 0.85, marginTop: 12 }}>
-          Completadas:{" "}
-          {EMPATIA_FIELDS.filter((f: any) => empatia[f.key].trim()).length}/
+          Completadas: {EMPATIA_FIELDS.filter((f: any) => empatia[f.key].trim()).length}/
           {EMPATIA_FIELDS.length}
         </div>
       </div>
@@ -2691,11 +2133,10 @@ function EmpathySection(props: any) {
   );
 }
 
-/* ====== Confetti (emoji) ====== */
 const ConfettiBurst: React.FC = () => {
-  const [items, setItems] = useState<
-    { id: number; left: number; delay: number; emoji: string }[]
-  >([]);
+  const [items, setItems] = useState<{ id: number; left: number; delay: number; emoji: string }[]>(
+    []
+  );
   useEffect(() => {
     const EMOJIS = ["🎉", "🎊", "✨", "🏆", "🎈", "💥", "⭐"];
     const arr = Array.from({ length: 28 }).map((_, i) => ({
@@ -2709,14 +2150,7 @@ const ConfettiBurst: React.FC = () => {
     return () => clearTimeout(t);
   }, []);
   return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        overflow: "hidden",
-        pointerEvents: "none",
-      }}
-    >
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
       {items.map((p) => (
         <div
           key={p.id}
@@ -2725,9 +2159,7 @@ const ConfettiBurst: React.FC = () => {
             top: -20,
             left: `${p.left}%`,
             fontSize: 22,
-            animation: `fall ${1.8 + Math.random() * 0.9}s ease-in ${
-              p.delay
-            }s forwards`,
+            animation: `fall ${1.8 + Math.random() * 0.9}s ease-in ${p.delay}s forwards`,
           }}
         >
           {p.emoji}
@@ -2737,7 +2169,6 @@ const ConfettiBurst: React.FC = () => {
   );
 };
 
-/* ====== Ranking ====== */
 function RankingBars({
   data,
   onContinue,
@@ -2751,9 +2182,7 @@ function RankingBars({
   return (
     <>
       <div style={{ ...panelBox }}>
-        {data.length === 0 && (
-          <div style={{ opacity: 0.7 }}>Aún no hay datos de equipos…</div>
-        )}
+        {data.length === 0 && <div style={{ opacity: 0.7 }}>Aún no hay datos de equipos…</div>}
         {data.map((r, i) => {
           const pct = Math.round((r.total / max) * 100);
           const isFirst = i === 0;
@@ -2785,19 +2214,11 @@ function RankingBars({
               >
                 {i + 1}
                 {isFirst && (
-                  <div
-                    style={{
-                      fontSize: 22,
-                      lineHeight: "16px",
-                      animation: "crownFloat 1.6s ease-in-out infinite",
-                    }}
-                  >
+                  <div style={{ fontSize: 22, lineHeight: "16px", animation: "crownFloat 1.6s ease-in-out infinite" }}>
                     👑
                   </div>
                 )}
-                {isLast && (
-                  <div style={{ fontSize: 18, lineHeight: "16px" }}>🔗</div>
-                )}
+                {isLast && <div style={{ fontSize: 18, lineHeight: "16px" }}>🔗</div>}
               </div>
               <div style={{ position: "relative" }}>
                 <div
@@ -2810,11 +2231,7 @@ function RankingBars({
                   }}
                 >
                   {r.equipo}
-                  {i === 1 && data.length >= 2
-                    ? " 🥈"
-                    : i === 2 && data.length >= 3
-                    ? " 🥉"
-                    : ""}
+                  {i === 1 && data.length >= 2 ? " 🥈" : i === 2 && data.length >= 3 ? " 🥉" : ""}
                 </div>
                 <div
                   style={{
@@ -2832,9 +2249,7 @@ function RankingBars({
                       transition: "width .9s ease",
                       background: barBg,
                       backgroundSize: isFirst ? "200% 100%" : undefined,
-                      animation: isFirst
-                        ? "shimmer 2.4s linear infinite"
-                        : undefined,
+                      animation: isFirst ? "shimmer 2.4s linear infinite" : undefined,
                       borderRadius: 14,
                       position: "relative",
                       filter: isLast ? "grayscale(0.3)" : "none",
@@ -2842,23 +2257,12 @@ function RankingBars({
                   />
                 </div>
               </div>
-              <div
-                style={{ textAlign: "right", fontWeight: 900, fontSize: 18 }}
-              >
-                {r.total}
-              </div>
+              <div style={{ textAlign: "right", fontWeight: 900, fontSize: 18 }}>{r.total}</div>
             </div>
           );
         })}
       </div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          gap: 10,
-          marginTop: 12,
-        }}
-      >
+      <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 12 }}>
         <Btn onClick={onContinue} label="Continuar" full={false} />
       </div>
     </>
@@ -2888,9 +2292,7 @@ function AdminDashboard({
   >("resumen");
 
   const exportJSON = (name: string, data: any) => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json",
-    });
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -2901,23 +2303,14 @@ function AdminDashboard({
 
   const totals = {
     equipos: analytics.teams.length,
-    estudiantes: analytics.teams.reduce(
-      (acc, t) => acc + (t.integrantes?.length || 0),
-      0
-    ),
+    estudiantes: analytics.teams.reduce((acc, t) => acc + (t.integrantes?.length || 0), 0),
     reflexiones: analytics.reflections.length,
     rooms: analytics.roomsCreated,
   };
 
   return (
-    <Card
-      title="Panel de Administrador"
-      subtitle="Configura el juego y revisa métricas"
-      width={1100}
-    >
-      <div
-        style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}
-      >
+    <Card title="Panel de Administrador" subtitle="Configura el juego y revisa métricas" width={1100}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {[
           ["resumen", "📊 Resumen"],
           ["temas", "🎯 Temáticas & Desafíos"],
@@ -2942,52 +2335,25 @@ function AdminDashboard({
           </button>
         ))}
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <Btn
-            label="Exportar métricas"
-            full={false}
-            variant="outline"
-            onClick={() => exportJSON("udd_metrics", analytics)}
-          />
-          <Btn
-            label="Exportar configuración"
-            full={false}
-            variant="outline"
-            onClick={() => exportJSON("udd_themes", THEMES)}
-          />
+          <Btn label="Exportar métricas" full={false} variant="outline" onClick={() => exportJSON("udd_metrics", analytics)} />
+          <Btn label="Exportar configuración" full={false} variant="outline" onClick={() => exportJSON("udd_themes", THEMES)} />
           <Btn
             label="Resetear métricas"
             bg="#F44336"
             full={false}
             onClick={() => {
-              if (
-                confirm(
-                  "¿Seguro que quieres borrar todas las métricas (equipos/uso/reflexiones)?"
-                )
-              ) {
+              if (confirm("¿Seguro que quieres borrar todas las métricas (equipos/uso/reflexiones)?")) {
                 clearMetrics();
                 alert("Métricas reseteadas.");
               }
             }}
           />
-          <Btn
-            label="⬅ Volver"
-            full={false}
-            bg={theme.amarillo}
-            fg={theme.texto}
-            onClick={onBack}
-          />
+          <Btn label="⬅ Volver" full={false} bg={theme.amarillo} fg={theme.texto} onClick={onBack} />
         </div>
       </div>
 
-      {/* CONTENIDO */}
       {tab === "resumen" && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 12,
-          }}
-        >
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
           {[
             { k: "Salas creadas", v: totals.rooms },
             { k: "Equipos registrados", v: totals.equipos },
@@ -3008,8 +2374,7 @@ function AdminDashboard({
                 fontSize: 18,
               }}
             >
-              Código: {flow.roomCode || "—"} · Paso: {flow.step} · Equipos
-              esperados: {flow.expectedTeams || "—"}
+              Código: {flow.roomCode || "—"} · Paso: {flow.step} · Equipos esperados: {flow.expectedTeams || "—"}
             </div>
           </div>
         </div>
@@ -3028,28 +2393,14 @@ function AdminDashboard({
                 .slice()
                 .reverse()
                 .map((t, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      border: `1px solid ${theme.border}`,
-                      borderRadius: 12,
-                      padding: 10,
-                    }}
-                  >
+                  <div key={i} style={{ border: `1px solid ${theme.border}`, borderRadius: 12, padding: 10 }}>
                     <div style={{ fontWeight: 800 }}>
-                      {t.teamName}{" "}
-                      <span style={{ color: theme.muted }}>
-                        · sala {t.roomCode}
-                      </span>
+                      {t.teamName} <span style={{ color: theme.muted }}>· sala {t.roomCode}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: theme.muted }}>
-                      {new Date(t.ts).toLocaleString()}
-                    </div>
+                    <div style={{ fontSize: 12, color: theme.muted }}>{new Date(t.ts).toLocaleString()}</div>
                     <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
                       {t.integrantes?.map((p, j) => (
-                        <div key={j}>
-                          • <b>{p.nombre}</b> — {p.carrera}
-                        </div>
+                        <div key={j}>• <b>{p.nombre}</b> — {p.carrera}</div>
                       ))}
                     </div>
                   </div>
@@ -3070,26 +2421,12 @@ function AdminDashboard({
                 .slice()
                 .reverse()
                 .map((r, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      border: `1px solid ${theme.border}`,
-                      borderRadius: 12,
-                      padding: 10,
-                    }}
-                  >
+                  <div key={i} style={{ border: `1px solid ${theme.border}`, borderRadius: 12, padding: 10 }}>
                     <div style={{ fontWeight: 800 }}>
-                      {r.teamName}{" "}
-                      <span style={{ color: theme.muted }}>
-                        · sala {r.roomCode}
-                      </span>
+                      {r.teamName} <span style={{ color: theme.muted }}>· sala {r.roomCode}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: theme.muted }}>
-                      {new Date(r.ts).toLocaleString()}
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {r.text}
-                    </div>
+                    <div style={{ fontSize: 12, color: theme.muted }}>{new Date(r.ts).toLocaleString()}</div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.text}</div>
                   </div>
                 ))}
             </div>
@@ -3101,8 +2438,7 @@ function AdminDashboard({
         <div style={{ ...panelBox, textAlign: "left" }}>
           <div style={badgeTitle}>Uso de desafíos</div>
           <div style={{ fontSize: 12, color: theme.muted, marginBottom: 8 }}>
-            (Se incrementa cuando el profesor abre el mapa de empatía con un
-            desafío seleccionado)
+            (Se incrementa cuando el profesor abre el mapa de empatía con un desafío seleccionado)
           </div>
           {Object.keys(analytics.challengeUsage).length === 0 ? (
             <div style={{ opacity: 0.7 }}>Aún no hay datos de uso.</div>
@@ -3119,14 +2455,7 @@ function AdminDashboard({
                       ? `${t.label} — ${t.desafios[idx].titulo}`
                       : key;
                   return (
-                    <div
-                      key={key}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr auto",
-                        gap: 8,
-                      }}
-                    >
+                    <div key={key} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
                       <div>{label}</div>
                       <div style={{ fontWeight: 900 }}>{count}</div>
                     </div>
@@ -3170,10 +2499,7 @@ function ThemeEditor({
 
   const addChallenge = () => {
     const next = { ...local };
-    next[current].desafios.push({
-      titulo: "Nuevo desafío",
-      descripcion: "Descripción...",
-    });
+    next[current].desafios.push({ titulo: "Nuevo desafío", descripcion: "Descripción..." });
     setLocal(next);
   };
   const removeChallenge = (i: number) => {
@@ -3195,14 +2521,7 @@ function ThemeEditor({
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          justifyContent: "center",
-          flexWrap: "wrap",
-        }}
-      >
+      <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
         {(Object.keys(local) as (keyof ThemeConfig)[]).map((k) => (
           <button
             key={k}
@@ -3221,15 +2540,7 @@ function ThemeEditor({
         ))}
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 12,
-          alignItems: "start",
-        }}
-      >
-        {/* Persona */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
         <div style={{ ...panelBox, textAlign: "left" }}>
           <div style={badgeTitle}>Persona</div>
           <label>Nombre</label>
@@ -3243,9 +2554,7 @@ function ThemeEditor({
             type="number"
             style={{ ...baseInput, marginBottom: 8 }}
             value={t.persona.edad}
-            onChange={(e) =>
-              updatePersona({ edad: Number(e.target.value) || 0 })
-            }
+            onChange={(e) => updatePersona({ edad: Number(e.target.value) || 0 })}
           />
           <label>Bio</label>
           <textarea
@@ -3255,44 +2564,22 @@ function ThemeEditor({
           />
         </div>
 
-        {/* Desafíos */}
         <div style={{ ...panelBox, textAlign: "left" }}>
           <div style={badgeTitle}>Desafíos</div>
           <div style={{ display: "grid", gap: 10 }}>
             {t.desafios.map((d, i) => (
-              <div
-                key={i}
-                style={{
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: 12,
-                  padding: 10,
-                }}
-              >
+              <div key={i} style={{ border: `1px solid ${theme.border}`, borderRadius: 12, padding: 10 }}>
                 <div style={{ display: "grid", gap: 6 }}>
                   <label>Título</label>
-                  <input
-                    style={baseInput}
-                    value={d.titulo}
-                    onChange={(e) =>
-                      updateChallenge(i, { titulo: e.target.value })
-                    }
-                  />
+                  <input style={baseInput} value={d.titulo} onChange={(e) => updateChallenge(i, { titulo: e.target.value })} />
                   <label>Descripción</label>
                   <textarea
                     style={{ ...baseInput, minHeight: 80 }}
                     value={d.descripcion}
-                    onChange={(e) =>
-                      updateChallenge(i, { descripcion: e.target.value })
-                    }
+                    onChange={(e) => updateChallenge(i, { descripcion: e.target.value })}
                   />
                 </div>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    marginTop: 8,
-                  }}
-                >
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
                   <Btn
                     label="Eliminar"
                     full={false}
@@ -3332,9 +2619,6 @@ function generateCode() {
   const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const nums = "123456789";
   const pick = (s: string, n: number) =>
-    Array.from(
-      { length: n },
-      () => s[Math.floor(Math.random() * s.length)]
-    ).join("");
+    Array.from({ length: n }, () => s[Math.floor(Math.random() * s.length)]).join("");
   return pick(letters, 2) + pick(nums, 3);
 }
