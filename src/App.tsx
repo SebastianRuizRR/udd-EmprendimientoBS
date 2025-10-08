@@ -31,12 +31,12 @@ const GlobalFormCSS = () => (
       outline: 3px solid #93C5FD;
       outline-offset: 2px;
     }
-    @keyframes crownFloat { 0% { transform: translateY(0); } 50% { transform: translateY(-6px); } 100% { transform: translateY(0); } }
-    @keyframes shimmer { 0% { background-position: 0% 0; } 100% { background-position: 120% 0; } }
-    @keyframes fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(360deg); opacity: 0.9; } }
-    @keyframes floatY { 0% { transform: translateY(0px); } 50% { transform: translateY(-18px); } 100% { transform: translateY(0px); } }
-    @keyframes drift { 0% { transform: translateX(0) rotate(0deg); } 50% { transform: translateX(20px) rotate(8deg); } 100% { transform: translateX(0) rotate(0deg); } }
-    @keyframes pulseSoft { 0% { transform: scale(1); opacity: .65; } 50% { transform: scale(1.06); opacity: .85; } 100% { transform: scale(1); opacity: .65; }
+    @frames crownFloat { 0% { transform: translateY(0); } 50% { transform: translateY(-6px); } 100% { transform: translateY(0); } }
+    @frames shimmer { 0% { background-position: 0% 0; } 100% { background-position: 120% 0; } }
+    @frames fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(360deg); opacity: 0.9; } }
+    @frames floatY { 0% { transform: translateY(0px); } 50% { transform: translateY(-18px); } 100% { transform: translateY(0px); } }
+    @frames drift { 0% { transform: translateX(0) rotate(0deg); } 50% { transform: translateX(20px) rotate(8deg); } 100% { transform: translateX(0) rotate(0deg); } }
+    @frames pulseSoft { 0% { transform: scale(1); opacity: .65; } 50% { transform: scale(1.06); opacity: .85; } 100% { transform: scale(1); opacity: .65; }
   `}</style>
 );
 
@@ -393,8 +393,21 @@ type FlowState = {
   expectedTeams: number;
 };
 
-const FLOW_KEY = "udd_flow_state_v1";
-const READY_KEY = "udd_ready_teams_v1";
+const FLOW_ = "udd_flow_state_v1";
+const READY_{(Object.keys(THEMES) as (keyof typeof THEMES)[]).map((key) => {
+  const active = temaSel === key;
+  return (
+    <Btn
+      key={String(key)}                   // ← fuerza string
+      onClick={() => setTemaSel(key as ThemeId)}}
+      bg={active ? theme.azul : "#BBDEFB"}
+      fg={active ? theme.blanco : theme.texto}
+      label={THEMES[key].label}
+      full={false}
+    />
+  );
+})}
+ = "udd_ready_teams_v1";
 const COINS_KEY = "udd_coins_v1";
 
 /* ==== NUEVO: persistencia de Temáticas y Analíticas ==== */
