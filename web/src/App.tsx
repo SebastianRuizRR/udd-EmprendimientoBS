@@ -198,22 +198,28 @@ export default function App(){
   const isTablet=useMediaQuery("(max-width: 1180px)"); const isMobile=useMediaQuery("(max-width: 640px)");
   const [joinedRoom,setJoinedRoom] = useState<string>(()=>sessionStorage.getItem(JOINED_KEY)||"");
 
-   const API = process.env.REACT_APP_API_URL || (window as any).REACT_APP_API_URL;
+  // URL backend (Codespaces o la que tengas en Netlify)
+  const API =
+    process.env.REACT_APP_API_URL || (window as any).REACT_APP_API_URL;
+
+  // Ping al backend: health + dbcheck
   useEffect(() => {
     if (!API) {
       console.warn("REACT_APP_API_URL no está definido");
       return;
     }
-    fetch(`${API}/health`)
-      .then(r => r.json())
-      .then(d => console.log("HEALTH:", d))
-      .catch(console.error);
+    (async () => {
+      try {
+        const h = await fetch(`${API}/health`).then((r) => r.json());
+        console.log("HEALTH:", h);
+        const d = await fetch(`${API}/dbcheck`).then((r) => r.json());
+        console.log("DBCHECK:", d);
+      } catch (e) {
+        console.error("Ping error:", e);
+      }
+    })();
+  }, []); // 👈 MUY IMPORTANTE: cierra con `[]);`
 
-    fetch(`${API}/dbcheck`)
-      .then(r => r.json())
-      .then(d => console.log("DBCHECK:", d))
-      .catch(console.error);
-  }, []);
 
   // --- Login Admin ---
   const [showAdminLogin, setShowAdminLogin] = useState(false);
