@@ -197,7 +197,6 @@ export default function App(){
   const [coins,setCoins]=useState(0);
   const isTablet=useMediaQuery("(max-width: 1180px)"); const isMobile=useMediaQuery("(max-width: 640px)");
   const [joinedRoom, setJoinedRoom] = useState<string>("");
-  const activeRoom = flow.roomCode || joinedRoom || "";
 
 
 
@@ -299,6 +298,10 @@ async function handleJoinRoom() {
   const isTeacher = mode === "prof";
   const {flow,setStep,startTimer,pauseTimer,resetTimer,publish} = useSharedFlow(isTeacher, initialFlow);
 
+  // ===== Room activo (sirve para profe y alumno) =====
+  const activeRoom = flow.roomCode || joinedRoom || "";
+
+
   const storageTick = useStorageSignal(
     mode==="prof" ? [READY_KEY,COINS_KEY,FLOW_KEY,ANALYTICS_KEY,THEMES_KEY]
                   : mode==="alumno" ? [COINS_KEY,FLOW_KEY,ANALYTICS_KEY,THEMES_KEY]
@@ -315,9 +318,6 @@ async function handleJoinRoom() {
   const teamId = activeRoom && (groupName || "(sin-nombre)")
   ? `${activeRoom}::${(groupName || "").trim() || "sin-nombre"}`
   : "";
-
-// ===== Room activo (sirve para profe y alumno) =====
-const activeRoom = activeRoom || joinedRoom || "";
 
   const analyticsApi=useAnalytics(); const {analytics,update}=analyticsApi;
 
