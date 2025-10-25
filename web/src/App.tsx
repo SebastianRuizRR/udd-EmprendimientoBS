@@ -255,22 +255,25 @@ async function handleCreateRoom() {
 
 async function handleJoinRoom() {
   const code = (roomCode || "").trim().toUpperCase();
-  if (!code) {
-    alert("Ingresa el código de sala");
-    return;
+  if (!code) { alert("Ingresa el código de sala"); return; }
+
+  try {
+    await joinRoom(code, { name: miNombre || "Alumno", career: miCarrera || "" });
+
+    // 🔴 CLAVE: refleja el código de sala en el flow local del alumno
+    publish({ roomCode: code });
+
+    setJoinedRoom(code);
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("room", code);
+    window.history.replaceState({}, "", url.toString());
+  } catch (err) {
+    console.error(err);
+    alert("No se pudo unir a la sala. Verifica el código o la conexión.");
   }
-
-  // Intenta unirte en el backend
-  await joinRoom(code, { name: miNombre || "Alumno", career: miCarrera || "" });
-
-  // Marca unión local en este dispositivo
-  setJoinedRoom(code);
-
-  // opcional: reflejar en URL
-  const url = new URL(window.location.href);
-  url.searchParams.set("room", code);
-  window.history.replaceState({}, "", url.toString());
 }
+
 
 
 
@@ -302,21 +305,23 @@ async function handleJoinRoom() {
     800
   );
 
-  const readyNow = useMemo(() => readyCount(), [storageTick, flow.roomCode, flow.expectedTeams]);
+  const readyNow = useMemo(() => readyCount(), [storageTick, activeRoom, flow.expectedTeams]);
 
 
-  const teamId = flow.roomCode && (groupName || "(sin-nombre)")
-  ? `${flow.roomCode}::${(groupName || "").trim() || "sin-nombre"}`
+  const teamId = activeRoom && (groupName || "(sin-nombre)")
+  ? `${activeRoom}::${(groupName || "").trim() || "sin-nombre"}`
   : "";
+// ===== Room activo (sirve para profe y alumno) =====
+const activeRoom = activeRoom || joinedRoom || "";
 
   const analyticsApi=useAnalytics(); const {analytics,update}=analyticsApi;
 
-  const markReady=()=>{const set=new Set<string>(readJSON<string[]>(READY_KEY,[])); if(teamId)set.add(teamId); const arr=Array.from(set); writeJSON(READY_KEY,arr); try{window.dispatchEvent(new StorageEvent("storage",{key:READY_KEY,newValue:JSON.stringify(arr)}))}catch{}; if(teamId){const teamName=teamId.split("::")[1]||"Equipo"; update(a=>({...a,teams:[...a.teams,{roomCode:flow.roomCode,teamName,integrantes:integrantes.length?integrantes:[{nombre:miNombre||"Integrante",carrera:miCarrera||"—"}],ts:Date.now()}]}));} setTeamReady(true);};
+  const markReady=()=>{const set=new Set<string>(readJSON<string[]>(READY_KEY,[])); if(teamId)set.add(teamId); const arr=Array.from(set); writeJSON(READY_KEY,arr); try{window.dispatchEvent(new StorageEvent("storage",{key:READY_KEY,newValue:JSON.stringify(arr)}))}catch{}; if(teamId){const teamName=teamId.split("::")[1]||"Equipo"; update(a=>({...a,teams:[...a.teams,{roomCode:activeRoom,teamName,integrantes:integrantes.length?integrantes:[{nombre:miNombre||"Integrante",carrera:miCarrera||"—"}],ts:Date.now()}]}));} setTeamReady(true);};
   function readyCount(){
     const set = new Set<string>(readJSON<string[]>(READY_KEY, []));
-    return Array.from(set).filter(id => id.startsWith(`${flow.roomCode}::`)).length;
+    return Array.from(set).filter(id => id.startsWith(`${activeRoom}::`)).length;
   }
-  const clearReadyForRoom=()=>{const arr=readJSON<string[]>(READY_KEY,[]); const filtered=arr.filter(id=>!id.startsWith(`${flow.roomCode}::`)); writeJSON(READY_KEY,filtered); try{window.dispatchEvent(new StorageEvent("storage",{key:READY_KEY,newValue:JSON.stringify(filtered)}))}catch{};};
+  const clearReadyForRoom=()=>{const arr=readJSON<string[]>(READY_KEY,[]); const filtered=arr.filter(id=>!id.startsWith(`${activeRoom}::`)); writeJSON(READY_KEY,filtered); try{window.dispatchEvent(new StorageEvent("storage",{key:READY_KEY,newValue:JSON.stringify(filtered)}))}catch{};};
   function teamsForCurrentRoom(analytics:Analytics, roomCode:string){
     return analytics.teams
       .filter(t=>t.roomCode===roomCode)
@@ -364,13 +369,13 @@ useEffect(()=>{
 
 const ranking = useMemo(()=>{
   const map = readJSON<Record<string,number>>(COINS_KEY,{});
-  const ready = readyTeamNames(flow.roomCode);
+  const ready = readyTeamNames(activeRoom);
   const pairs = Object.entries(map)
-    .filter(([id]) => id.startsWith(`${flow.roomCode}::`))
+    .filter(([id]) => id.startsWith(`${activeRoom}::`))
     .map(([id, v]) => ({ equipo: id.split("::")[1] || "Equipo", total: v || 0 }))
     .filter(({equipo}) => ready.has(equipo)); 
   return pairs.sort((a,b)=> b.total - a.total);
-}, [flow.roomCode, flow.step, storageTick]);
+}, [activeRoom, flow.step, storageTick]);
 
   /* --F1: Spot the Difference-- */
   type Diff={x:number;y:number;r:number;zone:number;found?:boolean};
@@ -525,7 +530,7 @@ const ranking = useMemo(()=>{
   if(mode==="prof"){return(<div style={appStyles}><Background/><GlobalFormCSS/><AutoCenter>
 
  {/* --CREAR SALA-- */}
-{!flow.roomCode?(
+{!activeRoom?(
   <Card title="Crear Nueva Sala" subtitle="Define cantidad de equipos" width={820}>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
       <div>
@@ -553,11 +558,11 @@ const ranking = useMemo(()=>{
 ):null}
 
     {/* --LOBBY-- */}
-    {flow.roomCode&&flow.step==="lobby"&&(
+    {activeRoom&&flow.step==="lobby"&&(
   <div style={{width:"clamp(320px,92vw,1100px)", display:"grid", gridTemplateColumns:"1fr 320px", gap:12}}>
     <Card title="Sala creada" subtitle="Comparte el código y espera a los equipos" width={700}>
       <div style={{fontSize:32,fontFamily:"Roboto Mono, ui-monospace, SFMono-Regular, Menlo, monospace",marginBottom:8,color:theme.azul}}>
-        {flow.roomCode}
+        {activeRoom}
       </div>
       <div style={{fontSize:13,opacity:.8,marginBottom:12}}>
         Equipos listos: <b>{readyNow}</b> / <b>{flow.expectedTeams}</b>
@@ -573,11 +578,11 @@ const ranking = useMemo(()=>{
     <div style={{display:"grid",gap:12, alignContent:"start"}}>
       <div style={panelBox as React.CSSProperties}>
         <div style={badgeTitle}>👥 Equipos creados</div>
-        {teamsForCurrentRoom(analytics, flow.roomCode).length===0 ? (
+        {teamsForCurrentRoom(analytics, activeRoom).length===0 ? (
           <div style={{opacity:.7}}>Aún no se crean grupos…</div>
         ) : (
           <div style={{display:"grid",gap:6}}>
-            {teamsForCurrentRoom(analytics, flow.roomCode).map((name,i)=>(
+            {teamsForCurrentRoom(analytics, activeRoom).map((name,i)=>(
               <div key={i} style={{display:"grid", gridTemplateColumns:"1fr auto", gap:8}}>
                 <div><b>{name}</b></div>
                 <div style={{fontSize:12, opacity:.7}}>#{i+1}</div>
@@ -590,8 +595,8 @@ const ranking = useMemo(()=>{
       <div style={panelBox as React.CSSProperties}>
         <div style={badgeTitle}>✅ Marcados “listo”</div>
         {(() => {
-          const readySet = readyTeamNames(flow.roomCode);
-          const all = teamsForCurrentRoom(analytics, flow.roomCode);
+          const readySet = readyTeamNames(activeRoom);
+          const all = teamsForCurrentRoom(analytics, activeRoom);
           const readyList = all.filter(t=>readySet.has(t));
           return readyList.length===0 ? (
             <div style={{opacity:.7}}>Sin equipos listos aún…</div>
@@ -704,7 +709,7 @@ const ranking = useMemo(()=>{
 {flow.step==="f4_wheel"&&(
   <Card title="Fase 4 — Orden de Presentación" subtitle="Gira la ruleta o genera orden aleatorio" width={980}>
     <WheelOrder
-      teams={getTeamsForRoom(analytics, flow.roomCode)}
+      teams={getTeamsForRoom(analytics, activeRoom)}
       onConfirm={(order)=>{
         publish({presentOrder:order,currentIdx:0});
         resetTimer(flow.pitchSeconds);
@@ -807,7 +812,7 @@ const ranking = useMemo(()=>{
 if(mode==="alumno"){return(<div style={appStyles}><Background/><GlobalFormCSS/><AutoCenter>
 
 {/* --LOGIN (Alumno ingresa código)-- */}
-{(!joinedRoom || joinedRoom !== flow.roomCode) && (
+{(!joinedRoom) && (
   <Card title="Alumno" subtitle="Ingresa el código de sala para continuar" width={520}>
     <input
       placeholder="Código de sala"
@@ -825,8 +830,8 @@ if(mode==="alumno"){return(<div style={appStyles}><Background/><GlobalFormCSS/><
 )}
 
 {/* --CREAR GRUPO-- */}
-{joinedRoom === flow.roomCode && flow.roomCode && !teamReady && (
-  <Card title={`Sala ${flow.roomCode}`} subtitle="Crea tu grupo y marca listo" width={980}>
+{joinedRoom === activeRoom && activeRoom && !teamReady && (
+  <Card title={`Sala ${activeRoom}`} subtitle="Crea tu grupo y marca listo" width={980}>
     <div style={{display:"grid",gridTemplateColumns:isTablet?"1fr":"1fr 1fr auto",gap:10,marginBottom:12}}>
       <input placeholder="Nombre de grupo" value={groupName} onChange={e=>setGroupName(e.target.value)} style={baseInput}/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
@@ -868,7 +873,7 @@ if(mode==="alumno"){return(<div style={appStyles}><Background/><GlobalFormCSS/><
 )}
 
 {/* --ESPERA (alumno listo, profesor aún no inicia)-- */}
-{joinedRoom===flow.roomCode && flow.roomCode && teamReady && flow.step==="lobby" && (
+{joinedRoom===activeRoom && activeRoom && teamReady && flow.step==="lobby" && (
   <Card title="Esperando al profesor" subtitle="Aún no inicia la fase 1" width={720}>
     <div style={{textAlign:"center",fontSize:18,padding:20}}>
       ⏳ Esperando a que el profesor comience...
@@ -1030,8 +1035,8 @@ if(mode==="alumno"){return(<div style={appStyles}><Background/><GlobalFormCSS/><
 )}
 {flow.step==="f4_present"&&(
   <EvaluationPanelStudent
-    roomCode={flow.roomCode}
-    teams={getTeamsForRoom(analytics, flow.roomCode)}
+    roomCode={activeRoom}
+    teams={getTeamsForRoom(analytics, activeRoom)}
     analyticsUpdate={update}
     fromTeam={(teamId.split("::")[1]||"Equipo")}
     
@@ -1082,7 +1087,7 @@ if(mode==="alumno"){return(<div style={appStyles}><Background/><GlobalFormCSS/><
             const text=(ta?.value||"").trim();
             if(!text){alert("Escribe una reflexión primero");return;}
             const teamName=teamId.split("::")[1]||"Equipo";
-            update(a=>({...a,reflections:[...a.reflections,{roomCode:flow.roomCode,teamName,text,ts:Date.now()}]}));
+            update(a=>({...a,reflections:[...a.reflections,{roomCode:activeRoom,teamName,text,ts:Date.now()}]}));
             alert("¡Gracias! Reflexión registrada."); if(ta)ta.value="";
           }}
         />
@@ -1598,7 +1603,7 @@ function AdminDashboard({
           <div style={{gridColumn:"1 / -1",...panelBox}}>
             <div style={badgeTitle}>Sala actual</div>
             <div style={{fontFamily:"Roboto Mono, monospace",fontWeight:900,fontSize:18}}>
-              Código: {flow.roomCode||"—"} · Paso: {flow.step} · Equipos esperados: {flow.expectedTeams||"—"}
+              Código: {activeRoom||"—"} · Paso: {flow.step} · Equipos esperados: {flow.expectedTeams||"—"}
             </div>
           </div>
         </div>
@@ -1677,7 +1682,7 @@ function AdminDashboard({
       {tab==="ranking"&&(
         <div style={{...panelBox}}>
           <div style={{marginBottom:8,textAlign:"left",...badgeTitle}}>
-            Monedas (sala actual {flow.roomCode||"—"})
+            Monedas (sala actual {activeRoom||"—"})
           </div>
           <RankingBars data={ranking} onContinue={()=>{}}/>
         </div>
