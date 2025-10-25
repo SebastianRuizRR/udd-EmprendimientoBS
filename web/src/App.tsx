@@ -1778,4 +1778,4 @@ function awardCoinsToTeam(roomCode:string, teamName:string, delta:number){
   map[key]=(map[key]||0)+delta;
   writeJSON(COINS_KEY,map);
   try{window.dispatchEvent(new StorageEvent("storage",{key:COINS_KEY,newValue:JSON.stringify(map)}))}catch{}
-
+  }
