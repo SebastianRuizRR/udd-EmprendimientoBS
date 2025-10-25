@@ -1755,3 +1755,22 @@ function awardCoinsToTeam(roomCode:string, teamName:string, delta:number){
   writeJSON(COINS_KEY,map);
   try{window.dispatchEvent(new StorageEvent("storage",{key:COINS_KEY,newValue:JSON.stringify(map)}))}catch{}
 }
+import { useEffect } from "react";
+
+const API = process.env.REACT_APP_API_URL || (window as any).REACT_APP_API_URL;
+
+export default function App() {
+  useEffect(() => {
+    fetch(`${API}/health`)
+      .then(r => r.json())
+      .then(d => console.log("HEALTH:", d))
+      .catch(console.error);
+
+    fetch(`${API}/dbcheck`)
+      .then(r => r.json())
+      .then(d => console.log("DBCHECK:", d))
+      .catch(console.error);
+  }, []);
+
+  return /* tu UI */;
+}
