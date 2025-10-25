@@ -14,6 +14,20 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, env: process.env.NODE_ENV || "dev" });
 });
 
+// Chequeo real contra la BD
+// Verifica conexión a la base de datos
+app.get("/dbcheck", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ ok: true, message: "Conexión a la base de datos exitosa 🚀" });
+  } catch (err) {
+    console.error("Error al conectar con la base de datos:", err);
+    res.status(500).json({ ok: false, error: "Error al conectar con la base de datos" });
+  }
+});
+
+
+
 // ----- PROFESORES -----
 
 // Crear profesor (demo)
