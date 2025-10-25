@@ -201,8 +201,16 @@ export default function App(){
   const [profAuth, setProfAuth] = useState<ProfAuth | null>(null);
   const [showProfLogin, setShowProfLogin] = useState(false);
 
+  function handleProfLoginSuccess(auth: ProfAuth) {
+  setProfAuth(auth);
+  setShowProfLogin(false);
+  setMode("prof"); // recién aquí pasa a modo profesor
+}
 
-
+function handleProfLogout() {
+  setProfAuth(null);
+  setMode("inicio");
+}
   // Ping al backend: health + dbcheck
   useEffect(() => {
   (async () => {
@@ -236,7 +244,7 @@ async function handleCreateRoom() {
   writeJSON(COINS_KEY, {});
   try { window.dispatchEvent(new StorageEvent("storage", { key: COINS_KEY, newValue: JSON.stringify({}) })); } catch {}
 
-  const { roomCode: code } = await createRoom({ hostName: host }, profAuth);
+  const { roomCode: code } = await createRoom({ hostName: host }, profAuth || undefined);
 
   publish({
     roomCode: code,
@@ -457,14 +465,21 @@ const ranking = useMemo(()=>{
 
   {/* --INICIO  */}
   if(mode==="inicio")return(
+    
     <div style={appStyles}>
       <Background/>
       <GlobalFormCSS/>
       <AutoCenter>
+         {showProfLogin && (
+           <LoginProfesor
+            onSuccess={handleProfLoginSuccess}
+            onCancel={() => setShowProfLogin(false)}
+          />
+        )}
         {!showAdminLogin ? (
           <Card title="Juego de Emprendimiento UDD" subtitle="Selecciona tu perfil" width={900}>
             <div style={{display:"flex",gap:12,marginTop:12,flexWrap:"wrap",justifyContent:"center"}}>
-              <Btn onClick={()=>setMode("prof")} label="👩‍🏫 Profesor"/>
+              <Btn onClick={() => setShowProfLogin(true)} label="👩‍🏫 Profesor"/>
               <Btn onClick={()=>setMode("alumno")} bg={theme.rosa} label="🧑‍🎓 Alumno"/>
               <Btn onClick={()=>{
                 setShowAdminLogin(true);
