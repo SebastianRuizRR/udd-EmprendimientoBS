@@ -1,4 +1,5 @@
 // App.tsx
+
 import React,{useEffect,useLayoutEffect,useMemo,useRef,useState,memo} from "react";
 import TeamworkMiniAnim from "./componentes/TeamworkMiniAnim";
 import EmpathyAnimacion from "./componentes/EmpathyAnimacion";
@@ -196,6 +197,23 @@ export default function App(){
   const [coins,setCoins]=useState(0);
   const isTablet=useMediaQuery("(max-width: 1180px)"); const isMobile=useMediaQuery("(max-width: 640px)");
   const [joinedRoom,setJoinedRoom] = useState<string>(()=>sessionStorage.getItem(JOINED_KEY)||"");
+
+   const API = process.env.REACT_APP_API_URL || (window as any).REACT_APP_API_URL;
+  useEffect(() => {
+    if (!API) {
+      console.warn("REACT_APP_API_URL no está definido");
+      return;
+    }
+    fetch(`${API}/health`)
+      .then(r => r.json())
+      .then(d => console.log("HEALTH:", d))
+      .catch(console.error);
+
+    fetch(`${API}/dbcheck`)
+      .then(r => r.json())
+      .then(d => console.log("DBCHECK:", d))
+      .catch(console.error);
+  }, []);
 
   // --- Login Admin ---
   const [showAdminLogin, setShowAdminLogin] = useState(false);
@@ -1754,23 +1772,4 @@ function awardCoinsToTeam(roomCode:string, teamName:string, delta:number){
   map[key]=(map[key]||0)+delta;
   writeJSON(COINS_KEY,map);
   try{window.dispatchEvent(new StorageEvent("storage",{key:COINS_KEY,newValue:JSON.stringify(map)}))}catch{}
-}
-import { useEffect } from "react";
 
-const API = process.env.REACT_APP_API_URL || (window as any).REACT_APP_API_URL;
-
-export default function App() {
-  useEffect(() => {
-    fetch(`${API}/health`)
-      .then(r => r.json())
-      .then(d => console.log("HEALTH:", d))
-      .catch(console.error);
-
-    fetch(`${API}/dbcheck`)
-      .then(r => r.json())
-      .then(d => console.log("DBCHECK:", d))
-      .catch(console.error);
-  }, []);
-
-  return /* tu UI */;
-}
