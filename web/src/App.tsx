@@ -5,7 +5,8 @@ import TeamworkMiniAnim from "./componentes/TeamworkMiniAnim";
 import EmpathyAnimacion from "./componentes/EmpathyAnimacion";
 import CreatividadAnimacion from "./componentes/CreatividadAnimacion";
 import PitchAnimacion from "./componentes/PitchAnimacion";
-
+import LoginProfesor from "./componentes/LoginProfesor";
+import type { ProfAuth } from "./api";
 /* ============ UTILES ============ */
 
 function mmss(sec: number): string {
@@ -197,6 +198,8 @@ export default function App(){
   const [coins,setCoins]=useState(0);
   const isTablet=useMediaQuery("(max-width: 1180px)"); const isMobile=useMediaQuery("(max-width: 640px)");
   const [joinedRoom, setJoinedRoom] = useState<string>("");
+  const [profAuth, setProfAuth] = useState<ProfAuth | null>(null);
+  const [showProfLogin, setShowProfLogin] = useState(false);
 
 
 
@@ -218,20 +221,23 @@ export default function App(){
     setRoomCode(urlRoom);
   }
 }, []);
+
   // ===== Handlers de sala (API) =====
 async function handleCreateRoom() {
+  if (!profAuth) {
+    setShowProfLogin(true);
+    return;
+  }
+
   const host = (miNombre || "").trim() || "Host";
 
-  // Limpia estado local del juego para la nueva sala
   writeJSON(READY_KEY, []);
   try { window.dispatchEvent(new StorageEvent("storage", { key: READY_KEY, newValue: JSON.stringify([]) })); } catch {}
   writeJSON(COINS_KEY, {});
   try { window.dispatchEvent(new StorageEvent("storage", { key: COINS_KEY, newValue: JSON.stringify({}) })); } catch {}
 
-  // Crea sala en el backend
-  const { roomCode: code } = await createRoom({ hostName: host });
+  const { roomCode: code } = await createRoom({ hostName: host }, profAuth);
 
-  // Publica la sala en el estado compartido del profe (para UI/local)
   publish({
     roomCode: code,
     expectedTeams: equiposQty,
@@ -240,16 +246,13 @@ async function handleCreateRoom() {
     running: false,
   });
 
-  // Guarda en estado local
   setRoomCode(code);
   setJoinedRoom(code);
 
-  // agrega el código a la URL para compartir fácil
   const url = new URL(window.location.href);
   url.searchParams.set("room", code);
   window.history.replaceState({}, "", url.toString());
 
-  // Métrica
   update(a => ({ ...a, roomsCreated: a.roomsCreated + 1 }));
 }
 

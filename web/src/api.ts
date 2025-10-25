@@ -1,8 +1,9 @@
-// src/api.ts
 export const API =
   (window as any).REACT_APP_API_URL ||
   process.env.REACT_APP_API_URL ||
-  "http://192.168.1.20:3001"; // ← cambia por la IP LAN de tu PC o dominio
+  "http://localhost:4000";
+// Tipo de autenticación para profesor
+export type ProfAuth = { user: string; pass: string };
 
 type CreateRoomReq = { hostName: string };
 type CreateRoomRes = { roomCode: string };
@@ -10,10 +11,17 @@ type CreateRoomRes = { roomCode: string };
 type JoinRoomReq = { name: string; career?: string };
 type JoinRoomRes = { ok: boolean; room: any };
 
-export async function createRoom(payload: CreateRoomReq): Promise<CreateRoomRes> {
+export async function createRoom(
+  payload: CreateRoomReq,
+  auth?: { user: string; pass: string }
+): Promise<CreateRoomRes> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (auth) {
+    headers.Authorization = `Basic ${btoa(`${auth.user}:${auth.pass}`)}`;
+  }
   const r = await fetch(`${API}/rooms`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload),
   });
   if (!r.ok) throw new Error("No se pudo crear la sala");
