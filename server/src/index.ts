@@ -6,17 +6,42 @@ import { PrismaClient } from "@prisma/client";
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors({ origin: "*"}));
+// --- CORS dinámico ---
+const origins = (process.env.CORS_ORIGIN ?? "")
+  .split(",")
+  .map(s => s.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: origins.length ? origins : false, // si no hay, deshabilita orígenes
+    credentials: false, // pon true sólo si usas cookies/sesión
+  })
+);
+
 app.use(express.json());
 
-// Healthcheck
+// --- RUTAS BÁSICAS ---
+app.get("/", (_req, res) => {
+  res.send("Servidor activo 🚀");
+});
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true, env: process.env.NODE_ENV || "dev" });
 });
 
-// ----- PROFESORES -----
+// Verifica conexión real a la BD
+app.get("/dbcheck", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ ok: true, message: "Conexión a la base de datos exitosa 🚀" });
+  } catch (err) {
+    console.error("Error al conectar con la base de datos:", err);
+    res.status(500).json({ ok: false, error: "Error al conectar con la base de datos" });
+  }
+});
 
-// Crear profesor (demo)
+// ----- PROFESORES -----
 app.post("/profesores", async (req, res) => {
   try {
     const { idProfesor, correo, contrasena } = req.body;
@@ -27,14 +52,12 @@ app.post("/profesores", async (req, res) => {
       data: { idProfesor, correo, contrasena },
     });
     res.status(201).json(prof);
-  } catch (err:any) {
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // ----- SALAS -----
-
-// Crear sala (relacionada a un profesor)
 app.post("/salas", async (req, res) => {
   try {
     const { idSala, fecha, profesorId } = req.body;
@@ -49,32 +72,36 @@ app.post("/salas", async (req, res) => {
       },
     });
     res.status(201).json(sala);
-  } catch (err:any) {
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Obtener sala + opcionalmente relaciones
 app.get("/salas/:idSala", async (req, res) => {
   try {
     const sala = await prisma.sala.findUnique({
       where: { idSala: req.params.idSala },
-      // incluye equipos si ya los tienes en el schema
       // include: { equipos: true },
     });
     if (!sala) return res.status(404).json({ error: "Sala no encontrada" });
     res.json(sala);
-  } catch (err:any) {
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// --- Arranque ---
 const PORT = Number(process.env.PORT) || 4000;
 app.listen(PORT, () => {
   console.log(`API escuchando en http://localhost:${PORT}`);
 });
 
-// Ruta raíz
-app.get("/", (_req, res) => {
-  res.send("Servidor activo 🚀");
+// --- Apagado elegante ---
+process.on("SIGINT", async () => {
+  await prisma.$disconnect();
+  process.exit(0);
+});
+process.on("SIGTERM", async () => {
+  await prisma.$disconnect();
+  process.exit(0);
 });
