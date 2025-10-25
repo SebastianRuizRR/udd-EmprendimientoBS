@@ -1,52 +1,39 @@
-// prisma/schema.prisma
+// ============================================================
+// 📘 Prisma Schema para UDD Emprendimiento (Backend Express)
+// Base de datos: SQLite (archivo local dev.db)
+// ============================================================
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
+// ============================================================
+// Modelo: Profesor
+// ============================================================
+// Corresponde a /profesores en tu API
+// Se crea con: idProfesor, correo, contrasena
+// ============================================================
 model Profesor {
-  idProfesor String  @id @db.VarChar(50)
-  correo     String? @db.VarChar(50)
-  contrasena String  @db.VarChar(60)
-
-  // 1 profesor -> muchas salas
-  salas Sala[] @relation("ProfesorSalas")
+  idProfesor  String   @id            // Identificador del profesor (PK)
+  correo      String?                  // Correo opcional
+  contrasena  String                  // Contraseña del profesor
+  salas       Sala[]                  // Relación 1:N con salas
 }
 
+// ============================================================
+// Sala
+// ============================================================
+// Corresponde a /salas en tu API
+// Se crea con: idSala, fecha, profesorId (opcional)
+// ============================================================
 model Sala {
-  idSala String   @id @db.VarChar(10)
-  fecha  DateTime @db.Date
-
-  // lado "hijo" requerido
-  profesorId String   @db.VarChar(50)
-  profesor   Profesor @relation("ProfesorSalas", fields: [profesorId], references: [idProfesor], onDelete: Restrict)
-
-  equipos Equipo[]
-}
-
-model Equipo {
-  idEquipo     Int    @id @default(autoincrement())
-  idSala       String @db.VarChar(10)
-  nombreEquipo String @db.VarChar(50)
-  tokens       Int    @default(0)
-
-  sala    Sala         @relation(fields: [idSala], references: [idSala], onDelete: Cascade)
-  alumnos Estudiante[]
-
-  @@index([idSala])
-}
-
-model Estudiante {
-  idEstudiante     Int    @id @default(autoincrement())
-  idEquipo         Int
-  nombreEstudiante String @db.VarChar(50)
-  carrera          String @db.VarChar(50)
-
-  equipo Equipo @relation(fields: [idEquipo], references: [idEquipo], onDelete: Cascade)
-
-  @@index([idEquipo])
+  idSala      String      @id          // Código de la sala (PK)
+  fecha       DateTime                   // Fecha de creación
+  profesorId  String?                     // ID del profesor (opcional)
+  profesor    Profesor?   @relation(fields: [profesorId], references: [idProfesor])
 }

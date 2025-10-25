@@ -89,6 +89,44 @@ app.get("/salas/:idSala", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// === ROOMS (compatibilidad con el front) ===
+app.post("/rooms", async (req, res) => {
+  try {
+    const { hostName } = req.body;
+    if (!hostName) return res.status(400).json({ error: "hostName es requerido" });
+
+    // Genera código aleatorio (5 caracteres)
+    const code = Math.random().toString(36).substring(2, 7).toUpperCase();
+
+    // Crea sala en BD (sin requerir profesorId)
+    const sala = await prisma.sala.create({
+      data: {
+        idSala: code,
+        fecha: new Date(),
+      },
+    });
+
+    res.status(201).json({ roomCode: sala.idSala });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/rooms/:code/join", async (req, res) => {
+  try {
+    const { code } = req.params;
+    const sala = await prisma.sala.findUnique({
+      where: { idSala: code },
+    });
+
+    if (!sala) return res.status(404).json({ error: "Sala no encontrada" });
+
+    // Puedes registrar aquí el alumno/equipo si lo deseas
+    res.json({ ok: true, room: sala });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // --- Arranque ---
 const PORT = Number(process.env.PORT) || 4000;
