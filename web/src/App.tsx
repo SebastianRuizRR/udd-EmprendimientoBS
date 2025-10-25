@@ -1,9 +1,9 @@
 // App.tsx
 import React,{useEffect,useLayoutEffect,useMemo,useRef,useState,memo} from "react";
-import TeamworkMiniAnim from "./components/TeamworkAnimacion";
-import EmpathyAnimacion from "./components/EmpathyAnimacion";
-import CreatividadAnimacion from "./components/CreatividadAnimacion";
-import PitchAnimacion from "./components/PitchAnimacion";
+import TeamworkMiniAnim from "./componentes/TeamworkMiniAnim";
+import EmpathyAnimacion from "./componentes/EmpathyAnimacion";
+import CreatividadAnimacion from "./componentes/CreatividadAnimacion";
+import PitchAnimacion from "./componentes/PitchAnimacion";
 
 /* ============ UTILES ============ */
 
@@ -45,14 +45,20 @@ const AutoCenter:React.FC<{children:React.ReactNode}>=({children})=>{
   </div>);
 };
 
-const Card:React.FC<{title:string;subtitle?:string;width?:number;tight?:boolean}>=({title,subtitle,width=520,children,tight})=>(
+type CardProps = React.PropsWithChildren<{
+  title: string;
+  subtitle?: string;
+  width?: number;
+  tight?: boolean;
+}>;
+
+const Card: React.FC<CardProps> = ({ title, subtitle, width = 520, children, tight }) => (
   <div style={{width:`clamp(320px,92vw,${width}px)`,background:"rgba(255,255,255,0.96)",boxShadow:theme.shadow,border:`1px solid ${theme.border}`,borderRadius:20,padding:tight?18:24,textAlign:"center",backdropFilter:"blur(2px)",position:"relative",zIndex:3,margin:"12px auto"}}>
     <h2 style={{margin:0,marginBottom:8,fontSize:26,fontWeight:900,color:theme.rosa}}>{title}</h2>
-    {subtitle&&<p style={{marginTop:0,marginBottom:16,color:theme.azul}}>{subtitle}</p>}
+    {subtitle && <p style={{marginTop:0,marginBottom:16,color:theme.azul}}>{subtitle}</p>}
     {children}
   </div>
 );
-
 const Btn:React.FC<{onClick?:()=>void;bg?:string;fg?:string;label:string;full?:boolean;disabled?:boolean;variant?:"solid"|"outline"}>=memo(({onClick,bg=theme.azul,fg=theme.blanco,label,full=true,disabled,variant="solid"})=>(
   <button onClick={()=>onClick?.()} disabled={disabled} style={{width:full? "100%":undefined,padding:"12px 16px",borderRadius:14,border:variant==="outline"?`2px solid ${theme.azul}`:"none",cursor:disabled?"not-allowed":"pointer",fontWeight:800,letterSpacing:.2,background:disabled?"#cfd8dc":variant==="outline"?"transparent":bg,color:disabled?"#607d8b":variant==="outline"?theme.azul:fg,boxShadow:variant==="outline"?"none":"0 6px 12px rgba(0,0,0,.12)",transition:"transform .06s ease, opacity .15s ease, box-shadow .15s ease",whiteSpace:"nowrap"}}
     onMouseDown={e=>!disabled&&(e.currentTarget.style.transform="scale(.98)")}
@@ -829,7 +835,7 @@ if(mode==="alumno"){return(<div style={appStyles}><Background/><GlobalFormCSS/><
 )}
 
 {/* --F1 (Alumno con pestañas)-- */}
-{flow.step==="f1_video"&&<TeamworkMiniAnim onContinue={()=> setStep("f1_instr")} />}
+{flow.step==="f1_video"&&<TeamworkMiniAnim />}
 {flow.step==="f1_instr"&&<Instructions title="Fase 1 — Trabajo en equipo" bullets={["El profesor controla el tiempo y el avance.","Usa las pestañas para cambiar entre <b>Diferencias</b> y <b>Matriz</b>.","Ambos comparten el mismo temporizador."]}/>}
 
 {flow.step==="f1_activity"&&(
@@ -978,23 +984,37 @@ if(mode==="alumno"){return(<div style={appStyles}><Background/><GlobalFormCSS/><
   </Card>
 )}
 {flow.step==="f4_present"&&(
-  <Card title="Presentaciones en curso" subtitle="Sigue las presentaciones. La evaluación llegará en la Fase 5." width={900}>
-    <div style={{width:"100%",aspectRatio:"16/7",borderRadius:16,border:`2px dashed ${theme.border}`,display:"grid",placeItems:"center",background:"#fff"}}>
-      <div style={{fontSize:18,opacity:.7}}>⏳ Espera — el profesor controla el orden y el tiempo</div>
-    </div>
-  </Card>
-)}
-
-{/* --F5 Alumno  -- */}
-{flow.step==="f5_video"&&(<VideoSpace title="Evaluación y retroalimentación"/>)}
-{flow.step==="f5_eval"&&(
   <EvaluationPanelStudent
     roomCode={flow.roomCode}
     teams={getTeamsForRoom(analytics, flow.roomCode)}
     analyticsUpdate={update}
     fromTeam={(teamId.split("::")[1]||"Equipo")}
+    
   />
 )}
+
+{flow.step==="f5_video"&&(
+  <Card title="¡Evalúa el juego!" subtitle="Escanea el código QR con tu celular" width={700}>
+    <div
+      style={{
+        width:260,
+        height:260,
+        margin:"12px auto",
+        background:"#fff",
+        border:`3px dashed ${theme.border}`,
+        borderRadius:16,
+        display:"grid",
+        placeItems:"center",
+        color:"#90A4AE",
+        fontWeight:800
+      }}
+    >
+      QR aquí
+    </div>
+  </Card>
+)}
+
+
 {/* --F5 Rank (Alumno) -- */}
 {flow.step==="f5_rank"&&(
   <Card title="Ranking — Fase 5" subtitle="Resultados en vivo" width={900}>
@@ -1053,7 +1073,7 @@ function ThemeChallengeSection({THEMES,temaSel,setTemaSel,desafioIndex,setDesafi
       {(Object.keys(THEMES) as (keyof typeof THEMES)[]).map(key=>{
         const active=temaSel===key;
         return(
-          <Btn key={key} onClick={()=>setTemaSel(key)} bg={active?theme.azul:"#BBDEFB"} fg={active?theme.blanco:theme.texto} label={THEMES[key].label} full={false}/>
+          <Btn key={String(key)} onClick={()=>setTemaSel(key)} bg={active?theme.azul:"#BBDEFB"} fg={active?theme.blanco:theme.texto} label={THEMES[key].label} full={false}/>
         );
       })}
     </div>
@@ -1644,7 +1664,7 @@ function ThemeEditor({THEMES,setTHEMES}:{THEMES:any;setTHEMES:(t:any)=>void;}){
       <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
         {(Object.keys(local) as ThemeId[]).map(k=>(
           <button
-            key={k}
+            key={String(k)}
             onClick={()=>setCurrent(k)}
             style={{
               padding:"8px 12px",borderRadius:12,
