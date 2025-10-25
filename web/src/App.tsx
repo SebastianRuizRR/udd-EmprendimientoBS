@@ -204,21 +204,15 @@ export default function App(){
 
   // Ping al backend: health + dbcheck
   useEffect(() => {
-    if (!API) {
-      console.warn("REACT_APP_API_URL no está definido");
-      return;
+  (async () => {
+    try {
+      const r = await fetch(`${API}/health`);
+      console.log("Health:", r.status, "API:", API);
+    } catch (e) {
+      console.error("No alcanzo el backend:", API, e);
     }
-    (async () => {
-      try {
-        const h = await fetch(`${API}/health`).then((r) => r.json());
-        console.log("HEALTH:", h);
-        const d = await fetch(`${API}/dbcheck`).then((r) => r.json());
-        console.log("DBCHECK:", d);
-      } catch (e) {
-        console.error("Ping error:", e);
-      }
-    })();
-  }, []); // 👈 MUY IMPORTANTE: cierra con `[]);`
+  })();
+}, []);
 
 
   // --- Login Admin ---
