@@ -1,0 +1,52 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Profesor {
+  idProfesor String  @id @db.VarChar(50)
+  correo     String? @db.VarChar(50)
+  contrasena String  @db.VarChar(60)
+
+  // 1 profesor -> muchas salas
+  salas Sala[] @relation("ProfesorSalas")
+}
+
+model Sala {
+  idSala String   @id @db.VarChar(10)
+  fecha  DateTime @db.Date
+
+  // lado "hijo" requerido
+  profesorId String   @db.VarChar(50)
+  profesor   Profesor @relation("ProfesorSalas", fields: [profesorId], references: [idProfesor], onDelete: Restrict)
+
+  equipos Equipo[]
+}
+
+model Equipo {
+  idEquipo     Int    @id @default(autoincrement())
+  idSala       String @db.VarChar(10)
+  nombreEquipo String @db.VarChar(50)
+  tokens       Int    @default(0)
+
+  sala    Sala         @relation(fields: [idSala], references: [idSala], onDelete: Cascade)
+  alumnos Estudiante[]
+
+  @@index([idSala])
+}
+
+model Estudiante {
+  idEstudiante     Int    @id @default(autoincrement())
+  idEquipo         Int
+  nombreEstudiante String @db.VarChar(50)
+  carrera          String @db.VarChar(50)
+
+  equipo Equipo @relation(fields: [idEquipo], references: [idEquipo], onDelete: Cascade)
+
+  @@index([idEquipo])
+}
