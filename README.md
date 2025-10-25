@@ -1,2 +1,4 @@
-# udd-EmprendimientoBS
-Created with CodeSandbox
+# Monorepo UDD Emprendimiento
+
+- Frontend: `/web`
+- Backend: `/api` (próximamente)
