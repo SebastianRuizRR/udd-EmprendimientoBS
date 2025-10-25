@@ -197,6 +197,7 @@ export default function App(){
   const [coins,setCoins]=useState(0);
   const isTablet=useMediaQuery("(max-width: 1180px)"); const isMobile=useMediaQuery("(max-width: 640px)");
   const [joinedRoom, setJoinedRoom] = useState<string>("");
+  const activeRoom = flow.roomCode || joinedRoom || "";
 
 
 
@@ -305,22 +306,27 @@ async function handleJoinRoom() {
     800
   );
 
-  const readyNow = useMemo(() => readyCount(), [storageTick, activeRoom, flow.expectedTeams]);
+  const readyNow = useMemo(
+  () => readyCount(activeRoom),
+  [storageTick, activeRoom, flow.expectedTeams]
+);
 
 
   const teamId = activeRoom && (groupName || "(sin-nombre)")
   ? `${activeRoom}::${(groupName || "").trim() || "sin-nombre"}`
   : "";
+
 // ===== Room activo (sirve para profe y alumno) =====
 const activeRoom = activeRoom || joinedRoom || "";
 
   const analyticsApi=useAnalytics(); const {analytics,update}=analyticsApi;
 
   const markReady=()=>{const set=new Set<string>(readJSON<string[]>(READY_KEY,[])); if(teamId)set.add(teamId); const arr=Array.from(set); writeJSON(READY_KEY,arr); try{window.dispatchEvent(new StorageEvent("storage",{key:READY_KEY,newValue:JSON.stringify(arr)}))}catch{}; if(teamId){const teamName=teamId.split("::")[1]||"Equipo"; update(a=>({...a,teams:[...a.teams,{roomCode:activeRoom,teamName,integrantes:integrantes.length?integrantes:[{nombre:miNombre||"Integrante",carrera:miCarrera||"—"}],ts:Date.now()}]}));} setTeamReady(true);};
-  function readyCount(){
+  function readyCount(roomCode: string){
     const set = new Set<string>(readJSON<string[]>(READY_KEY, []));
-    return Array.from(set).filter(id => id.startsWith(`${activeRoom}::`)).length;
-  }
+    return Array.from(set).filter(id => id.startsWith(`${roomCode}::`)).length;
+}
+
   const clearReadyForRoom=()=>{const arr=readJSON<string[]>(READY_KEY,[]); const filtered=arr.filter(id=>!id.startsWith(`${activeRoom}::`)); writeJSON(READY_KEY,filtered); try{window.dispatchEvent(new StorageEvent("storage",{key:READY_KEY,newValue:JSON.stringify(filtered)}))}catch{};};
   function teamsForCurrentRoom(analytics:Analytics, roomCode:string){
     return analytics.teams
@@ -373,9 +379,10 @@ const ranking = useMemo(()=>{
   const pairs = Object.entries(map)
     .filter(([id]) => id.startsWith(`${activeRoom}::`))
     .map(([id, v]) => ({ equipo: id.split("::")[1] || "Equipo", total: v || 0 }))
-    .filter(({equipo}) => ready.has(equipo)); 
+    .filter(({equipo}) => ready.has(equipo));
   return pairs.sort((a,b)=> b.total - a.total);
 }, [activeRoom, flow.step, storageTick]);
+
 
   /* --F1: Spot the Difference-- */
   type Diff={x:number;y:number;r:number;zone:number;found?:boolean};
@@ -1035,8 +1042,8 @@ if(mode==="alumno"){return(<div style={appStyles}><Background/><GlobalFormCSS/><
 )}
 {flow.step==="f4_present"&&(
   <EvaluationPanelStudent
-    roomCode={activeRoom}
-    teams={getTeamsForRoom(analytics, activeRoom)}
+  roomCode={activeRoom}
+  teams={getTeamsForRoom(analytics, activeRoom)}
     analyticsUpdate={update}
     fromTeam={(teamId.split("::")[1]||"Equipo")}
     
