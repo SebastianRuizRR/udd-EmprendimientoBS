@@ -196,11 +196,9 @@ export default function App(){
   const [integrantes,setIntegrantes]=useState<{nombre:string;carrera:string}[]>([]); const [teamReady,setTeamReady]=useState(false);
   const [coins,setCoins]=useState(0);
   const isTablet=useMediaQuery("(max-width: 1180px)"); const isMobile=useMediaQuery("(max-width: 640px)");
-  const [joinedRoom,setJoinedRoom] = useState<string>(()=>sessionStorage.getItem(JOINED_KEY)||"");
+  const [joinedRoom, setJoinedRoom] = useState<string>("");
 
-  // URL backend (Codespaces o la que tengas en Netlify)
-  const API =
-    process.env.REACT_APP_API_URL || (window as any).REACT_APP_API_URL;
+
 
   // Ping al backend: health + dbcheck
   useEffect(() => {
@@ -213,6 +211,67 @@ export default function App(){
     }
   })();
 }, []);
+  useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const urlRoom = params.get("room");
+  if (urlRoom) {
+    setRoomCode(urlRoom);
+  }
+}, []);
+  // ===== Handlers de sala (API) =====
+async function handleCreateRoom() {
+  const host = (miNombre || "").trim() || "Host";
+
+  // Limpia estado local del juego para la nueva sala
+  writeJSON(READY_KEY, []);
+  try { window.dispatchEvent(new StorageEvent("storage", { key: READY_KEY, newValue: JSON.stringify([]) })); } catch {}
+  writeJSON(COINS_KEY, {});
+  try { window.dispatchEvent(new StorageEvent("storage", { key: COINS_KEY, newValue: JSON.stringify({}) })); } catch {}
+
+  // Crea sala en el backend
+  const { roomCode: code } = await createRoom({ hostName: host });
+
+  // Publica la sala en el estado compartido del profe (para UI/local)
+  publish({
+    roomCode: code,
+    expectedTeams: equiposQty,
+    step: "lobby",
+    remaining: 5 * 60,
+    running: false,
+  });
+
+  // Guarda en estado local
+  setRoomCode(code);
+  setJoinedRoom(code);
+
+  // agrega el código a la URL para compartir fácil
+  const url = new URL(window.location.href);
+  url.searchParams.set("room", code);
+  window.history.replaceState({}, "", url.toString());
+
+  // Métrica
+  update(a => ({ ...a, roomsCreated: a.roomsCreated + 1 }));
+}
+
+async function handleJoinRoom() {
+  const code = (roomCode || "").trim().toUpperCase();
+  if (!code) {
+    alert("Ingresa el código de sala");
+    return;
+  }
+
+  // Intenta unirte en el backend
+  await joinRoom(code, { name: miNombre || "Alumno", career: miCarrera || "" });
+
+  // Marca unión local en este dispositivo
+  setJoinedRoom(code);
+
+  // opcional: reflejar en URL
+  const url = new URL(window.location.href);
+  url.searchParams.set("room", code);
+  window.history.replaceState({}, "", url.toString());
+}
+
 
 
   // --- Login Admin ---
@@ -483,32 +542,11 @@ const ranking = useMemo(()=>{
 
       <div style={{alignSelf:"end"}}>
         <Btn
-          onClick={()=>{
-            const code = generateCode();
+  onClick={handleCreateRoom}
+  bg={theme.rosa}
+  label="Generar Código"
+/>
 
-            writeJSON(READY_KEY, []);
-            try {
-              window.dispatchEvent(new StorageEvent("storage", {key: READY_KEY, newValue: JSON.stringify([])}));
-            } catch {}
-
-            writeJSON(COINS_KEY, {});
-            try {
-              window.dispatchEvent(new StorageEvent("storage", {key: COINS_KEY, newValue: JSON.stringify({})}));
-            } catch {}
-
-            publish({
-              roomCode: code,
-              expectedTeams: equiposQty,
-              step: "lobby",
-              remaining: 5*60,
-              running: false
-            });
-
-            update(a => ({...a, roomsCreated: a.roomsCreated + 1}));
-          }}
-          bg={theme.rosa}
-          label="Generar Código"
-        />
       </div>
     </div>
   </Card>
@@ -778,21 +816,10 @@ if(mode==="alumno"){return(<div style={appStyles}><Background/><GlobalFormCSS/><
       style={{...baseInput,textAlign:"center",fontWeight:700,marginBottom:14}}
     />
     <Btn
-      onClick={()=>{
-        const f=readJSON<FlowState>(FLOW_KEY,initialFlow);
-        if(!f.roomCode){
-          alert("Aún no hay sala activa. Espera al profesor.");
-          return;
-        }
-        if(f.roomCode !== roomCode.trim()){
-          alert("Código incorrecto. Verifica con el profesor.");
-          return;
-        }
-        sessionStorage.setItem(JOINED_KEY, f.roomCode);
-        setJoinedRoom(f.roomCode);
-      }}
-      label="Entrar a la sala"
-    />
+  onClick={handleJoinRoom}
+  label="Entrar a la sala"
+/>
+
     <Btn onClick={()=>setMode("inicio")} bg={theme.amarillo} fg={theme.texto} label="⬅ Back"/>
   </Card>
 )}
