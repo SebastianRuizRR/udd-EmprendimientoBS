@@ -1,5 +1,5 @@
 // App.tsx
-
+import { createRoom, joinRoom, API } from "./api"; 
 import React,{useEffect,useLayoutEffect,useMemo,useRef,useState,memo} from "react";
 import TeamworkMiniAnim from "./componentes/TeamworkMiniAnim";
 import EmpathyAnimacion from "./componentes/EmpathyAnimacion";
