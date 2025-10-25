@@ -528,9 +528,17 @@ const ranking = useMemo(()=>{
 
   {/* --ADMIN-- */}
   if(mode==="admin"){return(<div style={appStyles}><Background/><GlobalFormCSS/><AutoCenter>
-    <AdminDashboard analytics={analytics} THEMES={THEMES} setTHEMES={saveTHEMES} flow={flow} onBack={()=>setMode("inicio")} ranking={ranking}
-      clearMetrics={()=>update(()=>({roomsCreated:0,challengeUsage:{},teams:[],reflections:[],feedbacks:[]}))}
-      />
+    <AdminDashboard
+  analytics={analytics}
+  THEMES={THEMES}
+  setTHEMES={saveTHEMES}
+  flow={flow}
+  onBack={()=>setMode("inicio")}
+  ranking={ranking}
+  clearMetrics={()=>update(()=>({roomsCreated:0,challengeUsage:{},teams:[],reflections:[],feedbacks:[]}))}  
+  activeRoom={activeRoom}
+/>
+
   </AutoCenter></div>)}
 
   {/* --PROFESOR-- */}
@@ -1540,8 +1548,18 @@ function EvaluationPanelStudent({
 
 /* --ADMIN DASHBOARD-- */
 function AdminDashboard({
-  analytics,THEMES,setTHEMES,flow,onBack,ranking,clearMetrics
-}:{analytics:Analytics;THEMES:any;setTHEMES:(t:any)=>void;flow:any;onBack:()=>void;ranking:{equipo:string;total:number}[];clearMetrics:()=>void;}){
+  analytics,THEMES,setTHEMES,flow,onBack,ranking,clearMetrics,activeRoom
+}:{
+  analytics: Analytics;
+  THEMES: any;
+  setTHEMES: (t:any)=>void;
+  flow: any;
+  onBack: ()=>void;
+  ranking: {equipo:string;total:number}[];
+  clearMetrics: ()=>void;
+  activeRoom: string;   
+}) {
+
   const [tab,setTab]=useState<"resumen"|"temas"|"equipos"|"reflexiones"|"uso"|"ranking">("resumen");
 
   const exportJSON=(name:string,data:any)=>{
