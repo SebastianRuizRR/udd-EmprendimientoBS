@@ -3,6 +3,22 @@ import express from "express";
 import cors from "cors";
 import { PrismaClient } from "@prisma/client";
 
+// === Auth súper simple (profe) ===
+const PROF_USER = process.env.PROF_USER || "1";
+const PROF_PASS = process.env.PROF_PASS || "1";
+
+function requireProfAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const h = req.headers.authorization || "";
+  if (!h.startsWith("Basic ")) {
+    return res.status(401).json({ error: "Auth requerida (Basic)" });
+  }
+  const decoded = Buffer.from(h.slice(6), "base64").toString("utf8");
+  const [u, p] = decoded.split(":");
+  if (u === PROF_USER && p === PROF_PASS) return next();
+  return res.status(401).json({ error: "Credenciales inválidas" });
+}
+
+
 const app = express();
 const prisma = new PrismaClient();
 
@@ -90,20 +106,16 @@ app.get("/salas/:idSala", async (req, res) => {
   }
 });
 // === ROOMS (compatibilidad con el front) ===
-app.post("/rooms", async (req, res) => {
+// SOLO EL PROFESOR (user: 1, pass: 1) PUEDE CREAR
+app.post("/rooms", requireProfAuth, async (req, res) => {
   try {
     const { hostName } = req.body;
     if (!hostName) return res.status(400).json({ error: "hostName es requerido" });
 
-    // Genera código aleatorio (5 caracteres)
     const code = Math.random().toString(36).substring(2, 7).toUpperCase();
 
-    // Crea sala en BD (sin requerir profesorId)
     const sala = await prisma.sala.create({
-      data: {
-        idSala: code,
-        fecha: new Date(),
-      },
+      data: { idSala: code, fecha: new Date() },
     });
 
     res.status(201).json({ roomCode: sala.idSala });
@@ -111,6 +123,7 @@ app.post("/rooms", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.post("/rooms/:code/join", async (req, res) => {
   try {
