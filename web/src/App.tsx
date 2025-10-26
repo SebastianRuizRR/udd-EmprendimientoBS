@@ -6,7 +6,7 @@ import EmpathyAnimacion from "./componentes/EmpathyAnimacion";
 import CreatividadAnimacion from "./componentes/CreatividadAnimacion";
 import PitchAnimacion from "./componentes/PitchAnimacion";
 import LoginProfesor from "./componentes/LoginProfesor";
-import type { ProfAuth } from "./api";
+import { ProfAuth } from "./api";
 /* ============ UTILES ============ */
 
 function mmss(sec: number): string {

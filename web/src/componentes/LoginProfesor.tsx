@@ -1,73 +1,113 @@
 import React, { useState } from "react";
+import type { ProfAuth } from "../api";
 
-interface Props {
-  onLogin: (user: string, pass: string) => void;
+type Props = {
+  onSuccess: (auth: ProfAuth) => void;
   onCancel: () => void;
-}
+};
 
-export default function LoginProfesor({ onLogin, onCancel }: Props) {
-  const [user, setUser] = useState("");
-  const [pass, setPass] = useState("");
-  const [error, setError] = useState("");
+const theme = {
+  azul: "#1976D2",
+  rosa: "#E91E63",
+  amarillo: "#FFEB3B",
+  texto: "#0D47A1",
+  border: "#E3E8EF",
+  blanco: "#FFFFFF",
+  shadow: "0 16px 36px rgba(16,24,40,.14)",
+};
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!user || !pass) {
-      setError("Por favor completa ambos campos");
-      return;
-    }
-    setError("");
-    onLogin(user, pass);
-  }
+const baseInput: React.CSSProperties = {
+  width: "100%",
+  padding: 12,
+  borderRadius: 12,
+  border: `1px solid ${theme.border}`,
+  boxSizing: "border-box",
+  maxWidth: "100%",
+  background: theme.blanco,
+};
+
+export default function LoginProfesor({ onSuccess, onCancel }: Props) {
+  const [user, setUser] = useState("1");
+  const [pass, setPass] = useState("1");
+  const [err, setErr] = useState("");
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-pink-400 via-purple-400 to-blue-400">
-      <div className="backdrop-blur-xl bg-white/20 shadow-xl rounded-3xl p-8 w-[90%] max-w-md">
-        <h2 className="text-center text-white font-bold text-2xl mb-2 drop-shadow-md">
-          Ingreso Profesor
-        </h2>
-        <p className="text-center text-white/80 mb-6">
-          Usa tus credenciales para crear una nueva sala
-        </p>
+    <div
+      style={{
+        width: "clamp(320px,92vw,520px)",
+        background: "rgba(255,255,255,0.96)",
+        boxShadow: theme.shadow,
+        border: `1px solid ${theme.border}`,
+        borderRadius: 20,
+        padding: 24,
+        textAlign: "center",
+        backdropFilter: "blur(2px)",
+        position: "relative",
+        zIndex: 3,
+        margin: "12px auto",
+      }}
+    >
+      <h2 style={{ margin: 0, marginBottom: 8, fontSize: 26, fontWeight: 900, color: theme.rosa }}>
+        Acceso Profesor
+      </h2>
+      <p style={{ marginTop: 0, marginBottom: 16, color: theme.azul }}>Ingresa tus credenciales</p>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <input
-            type="text"
-            placeholder="Usuario"
-            value={user}
-            onChange={(e) => setUser(e.target.value)}
-            className="w-full p-3 rounded-lg bg-white/90 text-gray-800 outline-none focus:ring-4 focus:ring-blue-400 placeholder-gray-500"
-          />
+      <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
+        <input
+          placeholder="Usuario"
+          value={user}
+          onChange={(e) => setUser(e.target.value)}
+          style={baseInput}
+        />
+        <input
+          placeholder="Contraseña"
+          type="password"
+          value={pass}
+          onChange={(e) => setPass(e.target.value)}
+          style={baseInput}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              if (user && pass) onSuccess({ user, pass });
+              else setErr("Completa usuario y contraseña");
+            }
+          }}
+        />
+        {err && <div style={{ color: "#D32F2F", fontWeight: 700, fontSize: 13 }}>{err}</div>}
 
-          <input
-            type="password"
-            placeholder="Contraseña"
-            value={pass}
-            onChange={(e) => setPass(e.target.value)}
-            className="w-full p-3 rounded-lg bg-white/90 text-gray-800 outline-none focus:ring-4 focus:ring-blue-400 placeholder-gray-500"
-          />
-
-          {error && (
-            <div className="text-center text-yellow-100 bg-yellow-600/30 p-2 rounded-lg text-sm">
-              {error}
-            </div>
-          )}
+        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 6 }}>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: "12px 16px",
+              borderRadius: 14,
+              border: "none",
+              background: theme.amarillo,
+              color: theme.texto,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            ⬅ Volver
+          </button>
 
           <button
-            type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 transition-colors text-white py-3 rounded-xl font-semibold shadow-lg"
+            onClick={() => {
+              if (user && pass) onSuccess({ user, pass });
+              else setErr("Completa usuario y contraseña");
+            }}
+            style={{
+              padding: "12px 16px",
+              borderRadius: 14,
+              border: "none",
+              background: theme.azul,
+              color: theme.blanco,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
           >
             Ingresar
           </button>
-
-          <button
-            type="button"
-            onClick={onCancel}
-            className="w-full bg-white/30 hover:bg-white/40 transition-colors text-white py-3 rounded-xl font-semibold"
-          >
-            Volver
-          </button>
-        </form>
+        </div>
       </div>
     </div>
   );
