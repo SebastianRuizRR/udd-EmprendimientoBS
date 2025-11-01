@@ -4,85 +4,123 @@ import React from "react";
 type Props = {
   title?: string;
   subtitle?: string;
-  durationSec?: number; // duración del ciclo completo
-  loop?: boolean;
+  /** duración del ciclo completo (descoordinado→sincronía→celebra→loop) */
+  durationSec?: number;
+  /** ajuste fino para alinear la meta con tu check real (altura) */
+  goalBottomPct?: number; // % relativo a la escena (recomendado 18–24)
+  /** escala global del bote/remeros */
+  boatScale?: number; // 1 = normal, 1.25 = más grande
 };
 
 const theme = {
   rosa: "#E91E63",
   azul: "#1976D2",
   verde: "#2E7D32",
-  amarillo: "#FFB300",
+  morado: "#7C4DFF",
   texto: "#0D47A1",
   border: "#E3E8EF",
-  bgSoft:
-    "radial-gradient(140% 100% at 50% 8%, #F7F9FC 0%, #fff 55%, #EFF4FA 100%)",
+  agua1: "#DDEAFB",
+  agua2: "#C9D8F4",
 };
 
 const TeamWorkMiniAnim: React.FC<Props> = ({
   title = "Trabajo en equipo",
-  subtitle = "Cuando sincronizamos la fuerza, lo imposible se mueve",
-  durationSec = 9,
+  subtitle = "Si remamos a la vez, avanzamos",
+  durationSec = 6,
+  goalBottomPct = 20, // mueve esto si tu círculo real está algo más alto/bajo
+  boatScale = 1.25,   // tamaño general del bote
 }) => {
   return (
     <div
       style={{
-        width: "clamp(320px,92vw,900px)",
+        width: "clamp(320px, 94vw, 980px)",
         margin: "0 auto",
         background: "#fff",
-        border: `1px solid ${theme.border}`,
         borderRadius: 20,
         padding: 16,
+        border: `1px solid ${theme.border}`,
         boxShadow: "0 16px 36px rgba(16,24,40,.14)",
         textAlign: "center",
       }}
     >
-      <style>{css(durationSec)}</style>
+      <style>{css(durationSec, goalBottomPct, boatScale)}</style>
 
-      <div style={{ fontWeight: 900, color: theme.rosa, fontSize: 22 }}>
+      <div style={{ fontWeight: 900, color: theme.rosa, fontSize: 24 }}>
         {title}
       </div>
       <div style={{ color: theme.texto, opacity: 0.85, marginBottom: 12 }}>
         {subtitle}
       </div>
 
-      <div className="sync-scene">
-        {/* HUD suave */}
-        <div className="sync-hud sync-anim" />
+      <div className="scene">
+        {/* Cielo/gradientes suaves */}
+        <div className="sky" />
 
-        {/* Suelo / pista */}
-        <div className="ground" />
-
-        {/* Bloque pesado */}
-        <div className="block sync-anim">
-          <div className="block-face">■</div>
+        {/* Agua */}
+        <div className="water">
+          <div className="wave w1" />
+          <div className="wave w2" />
+          <div className="wave w3" />
         </div>
 
-        {/* Flechas de dirección (se encienden en sincronía) */}
-        <div className="arrows sync-anim">
-          <span className="a a1">→</span>
-          <span className="a a2">→</span>
-          <span className="a a3">→</span>
-          <span className="a a4">→</span>
-          <span className="a a5">→</span>
+        {/* Meta “dummy” para alinear con tu círculo real */}
+        <div className="goal" aria-hidden />
+
+        {/* Bote + tripulación */}
+        <div className="boat">
+          <svg
+            viewBox="0 0 1200 380"
+            className="boatSvg"
+            role="img"
+            aria-label="Equipo remando sincronizado"
+          >
+            {/* Sombra del bote sobre el agua */}
+            <ellipse cx="600" cy="290" rx="480" ry="20" fill="rgba(0,0,0,.10)" />
+
+            {/* Casco (gradiente suave) */}
+            <defs>
+              <linearGradient id="hullG" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#A6B3BE" />
+                <stop offset="100%" stopColor="#909EAA" />
+              </linearGradient>
+
+              {/* máscara para simular que la pala entra al agua */}
+              <mask id="waterMask">
+                <rect x="0" y="0" width="1200" height="380" fill="white" />
+                {/* zona de agua “recorta” un poco la pala al bajar */}
+                <rect x="0" y="228" width="1200" height="152" fill="black" />
+              </mask>
+            </defs>
+
+            <g id="hull">
+              <path
+                d="M130 240 L1070 240 L1020 270 L180 270 Z"
+                fill="url(#hullG)"
+                stroke="#8EA0AC"
+                strokeWidth="2"
+              />
+              {/* Proa */}
+              <path
+                d="M1070 240 L1100 222"
+                stroke="#8EA0AC"
+                strokeWidth="16"
+                strokeLinecap="round"
+              />
+            </g>
+
+            {/* Tripulación articulada */}
+            <Crew x={260} color={theme.azul} delay={0.0} />
+            <Crew x={480} color={theme.rosa} delay={0.06} />
+            <Crew x={700} color={theme.verde} delay={0.12} />
+            <Crew x={920} color={theme.morado} delay={0.18} />
+          </svg>
         </div>
 
-        {/* Equipo (5 personas) — llegan, se alinean, empujan a la vez */}
-        <Person idx={1} xStart="18%" xPush="28%" color={theme.azul}    emoji="🧠" />
-        <Person idx={2} xStart="10%" xPush="22%" color={theme.rosa}    emoji="🤝" />
-        <Person idx={3} xStart="6%"  xPush="18%" color={theme.verde}   emoji="💪" />
-        <Person idx={4} xStart="2%"  xPush="14%" color={theme.amarillo} emoji="🎯" />
-        <Person idx={5} xStart="-4%" xPush="10%" color="#7C4DFF"        emoji="⚡" />
-
-        {/* Banda de “sincronización” (metrónomo visual) */}
-        <div className="syncline sync-anim" />
-
-        {/* Meta y celebración */}
-        <div className="goal">
-          <div className="flag">★</div>
+        {/* Banner de éxito arriba (reemplaza el check) */}
+        <div className="successBanner">
+          <span className="trophy" aria-hidden>🏆</span>
+          <span className="text">¡Logrado!</span>
         </div>
-        <div className="confetti sync-anim" />
-        <div className="done sync-anim">✓</div>
       </div>
     </div>
   );
@@ -90,310 +128,230 @@ const TeamWorkMiniAnim: React.FC<Props> = ({
 
 export default TeamWorkMiniAnim;
 
-/* ================= Subcomponentes ================= */
-function Person({
-  idx,
-  xStart,
-  xPush,
-  color,
-  emoji,
-}: {
-  idx: 1 | 2 | 3 | 4 | 5;
-  xStart: string; // posición horizontal de llegada
-  xPush: string;  // posición cuando empuja
-  color: string;
-  emoji: string;
-}) {
-  // Cada persona tiene su propio timing: llegan (0–25%), se alinean (25–40%),
-  // EMPUJAN (40–65% todos a la vez), celebran (65–75%), vuelven (75–100%).
+/* --------- Remero articulado (hombro→codo→remo con máscara de agua) --------- */
+function Crew({ x, color, delay }: { x: number; color: string; delay: number }) {
+  const d = `calc(var(--dur) * ${delay})`;
   return (
-    <div
-      className={`person p${idx} sync-anim`}
-      style={
-        {
-          // punto base vertical
-          bottom: "22%",
-          // se anima left vía keyframes
-          "--xStart": xStart,
-          "--xPush": xPush,
-          "--c": color,
-        } as React.CSSProperties
-      }
-    >
-      <div className="avatar" />
-      <div className="emoji">{emoji}</div>
-      {/* efecto “fuerza” al empujar */}
-      <div className="force sync-anim" />
-    </div>
+    <g transform={`translate(${x},0)`} style={{ animationDelay: d }}>
+      {/* tolete / pivote */}
+      <rect x={-22} y={218} width={12} height={18} rx={3} fill="#7F8E99" />
+      <rect x={-44} y={232} width={40} height={10} rx={5} fill="#AAB7C2" />
+
+      {/* piernas (pequeño empuje) */}
+      <g className="legs" transform="translate(0,240)">
+        <line
+          x1={0}
+          y1={0}
+          x2={30}
+          y2={20}
+          stroke="#6C7A86"
+          strokeWidth="8"
+          strokeLinecap="round"
+        />
+      </g>
+
+      {/* asiento */}
+      <rect x={-16} y={232} width={32} height={8} rx={4} fill="#BFCAD3" />
+
+      {/* grupo superior: hombro → codo → manos → remo */}
+      <g className="upper" transform="translate(0,220)">
+        {/* torso (se inclina) */}
+        <g className="torso" transform="translate(0,0)">
+          <line
+            x1={0}
+            y1={0}
+            x2={0}
+            y2={-32}
+            stroke={color}
+            strokeWidth="10"
+            strokeLinecap="round"
+          />
+          {/* cabeza */}
+          <circle cx={0} cy={-46} r={12} fill="#F4CCA6" stroke="#E2B58D" strokeWidth="2" />
+        </g>
+
+        {/* brazo superior (hombro->codo) */}
+        <g className="armUpper" transform="translate(0,-18)">
+          <line x1={0} y1={0} x2={28} y2={-6} stroke={color} strokeWidth="10" strokeLinecap="round" />
+          {/* brazo inferior (codo->mano) */}
+          <g className="armLower" transform="translate(28,-6)">
+            <line x1={0} y1={0} x2={26} y2={2} stroke={color} strokeWidth="10" strokeLinecap="round" />
+            {/* mano -> mango del remo */}
+            <g className="oarGroup" transform="translate(26,2)" mask="url(#waterMask)">
+              {/* pértiga del remo */}
+              <line x1={0} y1={0} x2={140} y2={0} stroke="#5B6B7A" strokeWidth="12" strokeLinecap="round" />
+              {/* pala */}
+              <rect className="blade" x={140} y={-14} width={30} height={28} rx={4} fill="#5B6B7A" />
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
   );
 }
 
-/* ================= CSS ================= */
-function css(DUR: number) {
+/* -------------------------------- CSS-in-JS -------------------------------- */
+function css(DUR: number, GOAL_BOTTOM: number, BOAT_SCALE: number) {
   return `
 :root { --dur: ${DUR}s; }
 
-/* Escena */
-.sync-scene{
-  position: relative;
-  width: 100%;
-  aspect-ratio: 16/9;
-  border: 1px solid ${theme.border};
-  border-radius: 16px;
-  overflow: hidden;
-  background: ${theme.bgSoft};
+/* Escena general */
+.scene{
+  position: relative; width: 100%; aspect-ratio: 16/7;
+  border: 1px solid ${theme.border}; border-radius: 16px; overflow: hidden;
+  background: #fff;
 }
 
-/* HUD sutil */
-.sync-hud{
-  position:absolute; inset:0; pointer-events:none;
+/* Cielo suave */
+.sky{
+  position:absolute; inset:0;
   background:
-    radial-gradient(40% 20% at 60% 0%, rgba(25,118,210,.10), transparent 60%),
-    radial-gradient(40% 26% at 20% 10%, rgba(233,30,99,.08), transparent 60%);
-  animation: drift var(--dur) ease-in-out infinite;
+    radial-gradient(40% 26% at 18% 6%, rgba(233,30,99,.10), transparent 60%),
+    radial-gradient(40% 20% at 72% 0%, rgba(25,118,210,.12), transparent 60%);
+  animation: skyDrift var(--dur) ease-in-out infinite;
 }
 
-/* Suelo */
-.ground{
-  position:absolute; left:0; right:0; bottom:18%;
-  height: 8px; border-radius: 6px;
-  background: linear-gradient(180deg,#E0E7EF 0%, #CBD5E1 100%);
-  box-shadow: 0 10px 22px rgba(0,0,0,.08);
+/* Agua */
+.water{
+  position:absolute; left:0; right:0; bottom:0; top:44%;
+  background: linear-gradient(180deg, ${theme.agua1}, ${theme.agua2});
+  box-shadow: inset 0 12px 24px rgba(0,0,0,.06);
 }
+.wave{
+  position:absolute; left:-20%; right:-20%; height:12px; border-radius:8px;
+  background: repeating-linear-gradient(90deg, rgba(255,255,255,.50) 0 16px, transparent 16px 32px);
+  opacity:.7; filter: blur(.2px);
+}
+.w1{ top: 12%; animation: wave var(--dur) linear infinite; }
+.w2{ top: 42%; animation: wave var(--dur) linear infinite reverse; opacity:.55; }
+.w3{ top: 68%; animation: wave var(--dur) linear infinite; opacity:.45; }
 
-/* Bloque pesado */
-.block{
-  position:absolute; left: 34%; bottom: calc(18% + 8px);
-  width: 180px; height: 90px; border-radius: 14px;
-  background: linear-gradient(180deg,#B0BEC5 0%, #90A4AE 100%);
-  border: 2px solid ${theme.border};
-  box-shadow: 0 18px 30px rgba(0,0,0,.12);
-  transform: translateX(0);
-  animation: blockMove var(--dur) ease-in-out infinite;
-}
-.block-face{
-  position:absolute; left: 10px; top: 8px; font-size: 20px; color: #5B6B7A; opacity:.7;
-}
+@keyframes wave{ 0%{transform:translateX(0)} 100%{transform:translateX(18%)} }
+@keyframes skyDrift{ 0%{transform:translateY(0)} 50%{transform:translateY(-6px)} 100%{transform:translateY(0)} }
 
-/* Flechas de dirección */
-.arrows{
-  position:absolute; left: 36%; bottom: calc(18% + 100px);
-  display:flex; gap: 6px;
-}
-.a{ font-weight: 900; color: ${theme.texto}; opacity:.12; transform: translateY(0); }
-.a1{ animation: arrowBlink var(--dur) linear infinite; animation-delay: calc(var(--dur) * .38); }
-.a2{ animation: arrowBlink var(--dur) linear infinite; animation-delay: calc(var(--dur) * .42); }
-.a3{ animation: arrowBlink var(--dur) linear infinite; animation-delay: calc(var(--dur) * .46); }
-.a4{ animation: arrowBlink var(--dur) linear infinite; animation-delay: calc(var(--dur) * .50); }
-.a5{ animation: arrowBlink var(--dur) linear infinite; animation-delay: calc(var(--dur) * .54); }
-
-/* Línea de sincronía (metrónomo) */
-.syncline{
-  position:absolute; left:8%; right:8%; bottom: calc(18% + 120px);
-  height: 6px; border-radius: 6px;
-  background: repeating-linear-gradient(90deg, rgba(0,0,0,.08) 0 14px, transparent 14px 28px);
-  overflow:hidden;
-}
-.syncline::after{
-  content:\"\"; position:absolute; left: -20%; top:0; bottom:0; width: 40%;
-  background: linear-gradient(90deg, rgba(25,118,210,.15), rgba(233,30,99,.15));
-  animation: sweep var(--dur) linear infinite;
-}
-
-/* Personas */
-.person{
-  position:absolute; left: var(--xStart); /* se animará en keyframes */
-  transform: translate(-50%, 0);
-  display:grid; justify-items:center; gap: 6px;
-}
-.avatar{
-  width: 58px; height: 58px; border-radius: 50%;
-  background: #fff; border: 5px solid var(--c);
-  box-shadow: 0 10px 22px rgba(0,0,0,.12);
-}
-.emoji{ font-size: 22px; line-height: 1; transform: translateY(-44px); }
-
-/* efecto “fuerza” */
-.force{
-  position:absolute; left:50%; bottom: 64px; transform: translate(-50%, 0) scale(.7);
-  width: 90px; height: 90px; border-radius: 50%;
-  background: conic-gradient(rgba(0,0,0,0) 0 25%, rgba(0,0,0,0) 25% 100%);
-  mix-blend-mode: multiply; opacity: 0;
-  animation: forcePulse var(--dur) ease-out infinite;
-}
-
-/* Meta */
+/* Meta “dummy”: ajustable para calzar con tu check real */
 .goal{
-  position:absolute; right: 10%; bottom: calc(18% + 50px);
-}
-.flag{
-  width: 50px; height: 50px; border-radius: 50%;
-  display:grid; place-items:center; font-size: 22px;
-  background: #fff; border: 4px solid ${theme.verde}; color:${theme.verde};
-  box-shadow: 0 10px 22px rgba(46,125,50,.20);
-  animation: breathe 2.4s ease-in-out infinite;
-}
-
-/* Celebración */
-.confetti{
-  position:absolute; right: 9%; bottom: calc(18% + 120px);
-  width: 140px; height: 140px; pointer-events:none; opacity:0; filter: blur(.2px);
-  background:
-    radial-gradient(6px 6px at 20% 30%, rgba(255,179,0,.95), transparent 40%),
-    radial-gradient(6px 6px at 60% 40%, rgba(233,30,99,.95), transparent 40%),
-    radial-gradient(6px 6px at 40% 70%, rgba(25,118,210,.95), transparent 40%),
-    radial-gradient(6px 6px at 80% 60%, rgba(46,125,50,.95), transparent 40%),
-    radial-gradient(5px 5px at 30% 60%, rgba(0,0,0,.35), transparent 40%);
-  animation: confetti var(--dur) steps(1) infinite;
-}
-.done{
-  position:absolute; right: 12%; bottom: calc(18% + 70px);
+  position:absolute; right: 6%;
+  bottom: ${GOAL_BOTTOM}%;
   width: 56px; height: 56px; border-radius: 50%;
-  display:grid; place-items:center; font-weight:900;
-  background: #fff; border: 4px solid ${theme.verde}; color:${theme.verde};
-  box-shadow: 0 8px 18px rgba(46,125,50,.20);
-  transform: scale(0);
-  animation: donePop var(--dur) ease-out infinite;
+  background:#fff; border:4px solid ${theme.border};
+  box-shadow: 0 10px 20px rgba(0,0,0,.06);
 }
 
-/* ===== Animaciones ===== */
+/* Bote */
+.boat{
+  position:absolute; left: 8%;
+  bottom: calc(${GOAL_BOTTOM}% + 5.5%);  /* se apoya en la misma “línea” */
+  width: 84%;
+  transform: scale(${BOAT_SCALE});
+  transform-origin: left bottom;
+  animation: boatMove var(--dur) cubic-bezier(.22,.61,.36,1) infinite;
+}
+.boatSvg{ width: 100%; display:block; }
 
-/* HUD */
-@keyframes drift{
-  0%{ transform: translateY(0) }
-  50%{ transform: translateY(-8px) }
+/* Avance del bote: arranca MÁS ATRÁS, progresa fuerte en sincronía (35–70%) */
+@keyframes boatMove{
+  0%   { transform: translateX(-120px) scale(${BOAT_SCALE}) }  /* ← empieza más atrás */
+  34%  { transform: translateX(-100px) scale(${BOAT_SCALE}) }
+  70%  { transform: translateX(420px) scale(${BOAT_SCALE}) }
+  84%  { transform: translateX(420px) scale(${BOAT_SCALE}) }
+  100% { transform: translateX(-120px) scale(${BOAT_SCALE}) }
+}
+
+/* --------- Cinemática del remero (fluida y natural) --------- */
+/* Piernas empujan ligeramente */
+.legs{ animation: legPush var(--dur) linear infinite; transform-box: fill-box; }
+@keyframes legPush{
+  0%{ transform: translate(0,240) }
+  40%{ transform: translate(3px,240) }
+  55%{ transform: translate(5px,240) }
+  70%{ transform: translate(2px,240) }
+  100%{ transform: translate(0,240) }
+}
+
+/* Torso se inclina con la brazada */
+.torso{ transform-origin: 0px 0px; transform-box: fill-box; animation: torsoLean var(--dur) linear infinite; }
+@keyframes torsoLean{
+  0%{  transform: rotate(-7deg) }
+  35%{ transform: rotate(-12deg) }
+  55%{ transform: rotate(12deg) }
+  70%{ transform: rotate(-8deg) }
+  100%{ transform: rotate(-7deg) }
+}
+
+/* Hombro->codo */
+.armUpper{ transform-origin: 0px 0px; transform-box: fill-box; animation: armUp var(--dur) linear infinite; }
+@keyframes armUp{
+  0%{  transform: rotate(-6deg) }
+  40%{ transform: rotate(-12deg) }
+  55%{ transform: rotate(10deg) }
+  70%{ transform: rotate(-8deg) }
+  100%{ transform: rotate(-6deg) }
+}
+
+/* Codo->mano */
+.armLower{ transform-origin: 0px 0px; transform-box: fill-box; animation: armLow var(--dur) linear infinite; }
+@keyframes armLow{
+  0%{  transform: rotate(6deg) }
+  40%{ transform: rotate(0deg) }
+  55%{ transform: rotate(12deg) }
+  70%{ transform: rotate(2deg) }
+  100%{ transform: rotate(6deg) }
+}
+
+/* Mano + remo (grupo) */
+.oarGroup{ transform-origin: 0px 0px; transform-box: fill-box; animation: oarStroke var(--dur) linear infinite; }
+@keyframes oarStroke{
+  0%{  transform: rotate(-10deg) }
+  40%{ transform: rotate(-16deg) }   /* entra al agua */
+  55%{ transform: rotate(18deg) }    /* empuje */
+  70%{ transform: rotate(-12deg) }   /* recuperación */
+  100%{ transform: rotate(-10deg) }
+}
+/* Pala baja/ sube un poco para sentir "agua" */
+.blade{ animation: bladeDip var(--dur) ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+@keyframes bladeDip{
+  0%{  transform: translateY(0) }
+  40%{ transform: translateY(3px) }
+  55%{ transform: translateY(5px) }
+  70%{ transform: translateY(1px) }
   100%{ transform: translateY(0) }
 }
 
-/* metrónomo */
-@keyframes sweep{
-  0%{ left: -30% }
-  50%{ left: 100% }
-  100%{ left: -30% }
+/* --------- Banner de éxito arriba (reemplaza al check) --------- */
+.successBanner{
+  position:absolute;
+  top: 8%;
+  left: 50%;
+  transform: translateX(-50%) scale(0);
+  padding: 10px 22px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 3px solid ${theme.verde};
+  box-shadow: 0 10px 22px rgba(46,125,50,.18);
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 800; color: ${theme.verde};
+  animation: successPop var(--dur) ease-out infinite;
+}
+.trophy{ display:inline-block; font-size: 18px; animation: wobble var(--dur) ease-in-out infinite; }
+.text{ font-size: 16px; letter-spacing: .3px; }
+
+@keyframes successPop{
+  0%,78% { transform: translateX(-50%) scale(0); opacity: 0; }
+  82%    { transform: translateX(-50%) scale(1.08); opacity: 1; }
+  88%    { transform: translateX(-50%) scale(1); opacity: 1; }
+  100%   { transform: translateX(-50%) scale(0); opacity: 0; }
+}
+@keyframes wobble{
+  0%,78%,100% { transform: rotate(0deg); }
+  82% { transform: rotate(-10deg); }
+  85% { transform: rotate(6deg); }
+  88% { transform: rotate(0deg); }
 }
 
-/* flechas se encienden solo en la ventana de empuje */
-@keyframes arrowBlink{
-  0%, 38% { opacity:.12; transform: translateY(0) }
-  40%     { opacity:1;   transform: translateY(-2px) }
-  65%     { opacity:1;   transform: translateY(-2px) }
-  67%,100%{ opacity:.12; transform: translateY(0) }
-}
-
-/* “fuerza” de cada persona: ON durante el empuje */
-@keyframes forcePulse{
-  0%, 38% { opacity:0; transform: translate(-50%,0) scale(.7) }
-  40%     { opacity:.9; transform: translate(-50%,0) scale(1) }
-  65%     { opacity:.9; transform: translate(-50%,0) scale(1.05) }
-  67%,100%{ opacity:0;  transform: translate(-50%,0) scale(.7) }
-}
-
-/* Personas: llegada → alineación → empuje → retorno */
-.p1{ animation: personMove1 var(--dur) ease-in-out infinite; }
-.p2{ animation: personMove2 var(--dur) ease-in-out infinite; }
-.p3{ animation: personMove3 var(--dur) ease-in-out infinite; }
-.p4{ animation: personMove4 var(--dur) ease-in-out infinite; }
-.p5{ animation: personMove5 var(--dur) ease-in-out infinite; }
-
-@keyframes personMove1{
-  0%   { left: var(--xStart); }
-  20%  { left: var(--xPush); }   /* llega */
-  38%  { left: var(--xPush); }   /* alinea */
-  65%  { left: calc(var(--xPush) + 2%); } /* empuja (ligero avance) */
-  80%  { left: var(--xPush); }
-  100% { left: var(--xStart); }
-}
-@keyframes personMove2{
-  0%   { left: var(--xStart); }
-  22%  { left: var(--xPush); }
-  38%  { left: var(--xPush); }
-  65%  { left: calc(var(--xPush) + 2%); }
-  80%  { left: var(--xPush); }
-  100% { left: var(--xStart); }
-}
-@keyframes personMove3{
-  0%   { left: var(--xStart); }
-  24%  { left: var(--xPush); }
-  38%  { left: var(--xPush); }
-  65%  { left: calc(var(--xPush) + 2%); }
-  80%  { left: var(--xPush); }
-  100% { left: var(--xStart); }
-}
-@keyframes personMove4{
-  0%   { left: var(--xStart); }
-  26%  { left: var(--xPush); }
-  38%  { left: var(--xPush); }
-  65%  { left: calc(var(--xPush) + 2%); }
-  80%  { left: var(--xPush); }
-  100% { left: var(--xStart); }
-}
-@keyframes personMove5{
-  0%   { left: var(--xStart); }
-  28%  { left: var(--xPush); }
-  38%  { left: var(--xPush); }
-  65%  { left: calc(var(--xPush) + 2%); }
-  80%  { left: var(--xPush); }
-  100% { left: var(--xStart); }
-}
-
-/* Bloque: primero vibra (intentos descoordinados), luego AVANZA fuerte cuando todos empujan */
-@keyframes blockMove{
-  0%   { transform: translateX(0) }
-  10%  { transform: translateX(0) }
-  18%  { transform: translateX(-2px) }
-  26%  { transform: translateX(2px) }
-  34%  { transform: translateX(-2px) }
-  /* ventana de empuje coordinado */
-  40%  { transform: translateX(0) }
-  65%  { transform: translateX(220px) }
-  75%  { transform: translateX(220px) } /* pausa celebración */
-  100% { transform: translateX(0) }     /* reset suave */
-}
-
-/* celebración */
-@keyframes confetti{
-  0%, 74% { opacity: 0 }
-  76%     { opacity: .95 }
-  88%     { opacity: 0 }
-  100%    { opacity: 0 }
-}
-@keyframes donePop{
-  0%, 74% { transform: scale(0) }
-  76%     { transform: scale(1.05) }
-  80%     { transform: scale(1) }
-  100%    { transform: scale(0) }
-}
-@keyframes breathe{
-  0%{ transform: scale(1) }
-  50%{ transform: scale(1.06) }
-  100%{ transform: scale(1) }
-}
-
-/* Celebración elementos */
-.confetti{
-  position:absolute; right: 14%; bottom: calc(18% + 160px);
-  width: 140px; height: 140px; pointer-events:none; opacity:0; filter: blur(.2px);
-  background:
-    radial-gradient(6px 6px at 20% 30%, rgba(255,179,0,.95), transparent 40%),
-    radial-gradient(6px 6px at 60% 40%, rgba(233,30,99,.95), transparent 40%),
-    radial-gradient(6px 6px at 40% 70%, rgba(25,118,210,.95), transparent 40%),
-    radial-gradient(6px 6px at 80% 60%, rgba(46,125,50,.95), transparent 40%),
-    radial-gradient(5px 5px at 30% 60%, rgba(0,0,0,.35), transparent 40%);
-}
-.done{
-  position:absolute; right: 16%; bottom: calc(18% + 110px);
-  width: 56px; height: 56px; border-radius: 50%;
-  display:grid; place-items:center; font-weight:900;
-  background: #fff; border: 4px solid ${theme.verde}; color:${theme.verde};
-  box-shadow: 0 8px 18px rgba(46,125,50,.20);
-  transform: scale(0);
-}
-
-/* Responsive */
-@media (max-width: 640px){
-  .block{ width: 160px; height: 80px; }
-  .avatar{ width: 54px; height: 54px; }
-  .emoji{ font-size: 20px; transform: translateY(-40px); }
+/* Responsivo */
+@media (max-width: 720px){
+  .boat{ width: 92%; left: 4%; }
 }
 `;
 }

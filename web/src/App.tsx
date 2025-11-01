@@ -1711,7 +1711,7 @@ const pulseStyle: React.CSSProperties = { animation: "pulse 1.6s ease-in-out inf
 {flow.step==="f1_video" && (
   <>
     <div style={{ marginBottom: 12 }}>
-      <TeamworkMiniAnim loop /> 
+      <TeamworkMiniAnim/> 
     </div>
     <div style={{ display:"flex", justifyContent:"center" }}>
       <Btn onClick={()=>setStep("f1_instr")} label="Continuar con todos" full={false}/>
