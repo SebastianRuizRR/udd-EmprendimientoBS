@@ -1,49 +1,44 @@
-version: "3.9"
 
 services:
   db:
-    image: mysql:8.4
+    image: mysql:8.0
     container_name: udd_mysql
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: udd
-      MYSQL_USER: udd
-      MYSQL_PASSWORD: udd
+      MYSQL_DATABASE: appdb
+      MYSQL_USER: appuser
+      MYSQL_PASSWORD: apppass
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - "3306:3306"     # opcional exponer
     volumes:
-      - mysql_data:/var/lib/mysql
+      - dbdata:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-prootpass"]
       interval: 5s
-      timeout: 5s
-      retries: 10
+      timeout: 3s
+      retries: 20
 
   server:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
+    build: ./server
     container_name: udd_server
-    environment:
-      DATABASE_URL: mysql://root:root@db:3306/udd
-      NODE_ENV: production
-      PORT: 4000
-      CORS_ORIGIN: https://udd-emprendimiento.netlify.app,http://localhost:3000
     depends_on:
       db:
         condition: service_healthy
+    environment:
+      DATABASE_URL: "mysql://appuser:apppass@db:3306/appdb"
+      PORT: "4000"
+      NODE_ENV: "development"
     ports:
       - "4000:4000"
+    volumes:
+      - ./server:/app
+      - /app/node_modules   # evita que el bind-mount tape node_modules del contenedor
+    command: sh -c "npx prisma migrate deploy || true && npm run dev"
 
-  web:
-    build:
-      context: ./web
-      dockerfile: Dockerfile
-    container_name: udd_web
-    environment:
-      REACT_APP_API_URL: http://localhost:4000
-    depends_on:
-      - server
-    ports:
-      - "3000:80"
 
+
+  # El front puedes correrlo fuera de Docker (vite) o en un contenedor aparte.
+  # Yo recomiendo correr Vite en la shell de Codespaces (puerto 3000).
 volumes:
-  mysql_data:
+  dbdata:

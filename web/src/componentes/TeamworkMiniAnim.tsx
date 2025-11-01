@@ -1,323 +1,399 @@
+// TeamWorkMiniAnim.tsx
+import React from "react";
 
-// src/components/TeamworkAnimacion.tsx
-import React, { useEffect, useRef, useState, useMemo } from "react";
-
-/** Opciones:
- *  - loop: el ciclo se repite (default true)
- *  - stopAtEnd: si true, el ciclo se detiene al terminar y llama onFinished
- *  - onFinished: callback cuando llega al final con stopAtEnd=true
- */
 type Props = {
+  title?: string;
+  subtitle?: string;
+  durationSec?: number; // duración del ciclo completo
   loop?: boolean;
-  stopAtEnd?: boolean;
-  onFinished?: () => void;
 };
 
-export default function TeamworkMiniAnim({
-  loop = true,
-  stopAtEnd = false,
-  onFinished,
-}: Props) {
-  // playhead 0..1 dentro de un ciclo
-  const [t, setT] = useState(0);
+const theme = {
+  rosa: "#E91E63",
+  azul: "#1976D2",
+  verde: "#2E7D32",
+  amarillo: "#FFB300",
+  texto: "#0D47A1",
+  border: "#E3E8EF",
+  bgSoft:
+    "radial-gradient(140% 100% at 50% 8%, #F7F9FC 0%, #fff 55%, #EFF4FA 100%)",
+};
 
-  const rafRef = useRef<number | null>(null);
-  const doneRef = useRef(false);
-
-  const DURATION = 12000; // ms por ciclo (ajústalo)
-
-  useEffect(() => {
-    let start = performance.now();
-    const tick = (now: number) => {
-      const elapsed = now - start;
-
-      if (stopAtEnd) {
-        const clamped = Math.min(elapsed / DURATION, 1);
-        setT(clamped);
-        if (clamped >= 1 && !doneRef.current) {
-          doneRef.current = true;
-          onFinished?.();
-        }
-      } else {
-        const mod = loop ? (elapsed % DURATION) / DURATION : Math.min(elapsed / DURATION, 1);
-        setT(mod);
-      }
-
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, [loop, stopAtEnd, onFinished]);
-
-  // Posiciones en porcentaje (0..1 del ancho/alto del lienzo)
-  const { a, b, showNoLlego, showAyudo, showGracias, confetti } = useMemo(
-    () => computeTimeline(t),
-    [t]
-  );
-
+const TeamWorkMiniAnim: React.FC<Props> = ({
+  title = "Trabajo en equipo",
+  subtitle = "Cuando sincronizamos la fuerza, lo imposible se mueve",
+  durationSec = 9,
+}) => {
   return (
     <div
       style={{
-        width: "clamp(320px, 92vw, 900px)",
+        width: "clamp(320px,92vw,900px)",
         margin: "0 auto",
         background: "#fff",
-        border: "1px solid #E3E8EF",
+        border: `1px solid ${theme.border}`,
         borderRadius: 20,
+        padding: 16,
         boxShadow: "0 16px 36px rgba(16,24,40,.14)",
-        padding: 20,
         textAlign: "center",
       }}
     >
-      <h2 style={{ margin: 0, marginBottom: 8, fontSize: 26, fontWeight: 900, color: "#1976D2" }}>
-        Trabajo en equipo
-      </h2>
-      <p style={{ marginTop: 0, color: "#0D47A1" }}>
-        A no llega, B aparece, se coordinan y ¡lo logran!
-      </p>
+      <style>{css(durationSec)}</style>
 
-      <div
-        style={{
-          position: "relative",
-          width: "100%",
-          aspectRatio: "16/9",
-          borderRadius: 16,
-          border: "2px dashed #E3E8EF",
-          overflow: "hidden",
-          background: "linear-gradient(180deg,#EEF6FF, #FFFFFF)",
-        }}
-      >
-        {/* Cornisa */}
-        <div
-          style={{
-            position: "absolute",
-            left: "60%",
-            bottom: "40%",
-            width: 260,
-            height: 16,
-            background: "#90CAF9",
-            borderRadius: 8,
-            transform: "translateX(-50%)",
-          }}
-        />
-
-        {/* Globos de texto */}
-        {showNoLlego && <Speech xPct={40} yPct={70} text="No llego :(" />}
-        {showAyudo && <Speech xPct={48} yPct={64} text="¡Yo te ayudo!" />}
-        {showGracias && <Speech xPct={63} yPct={30} text="GRACIAS :)" />}
-
-        {/* Bichitos */}
-        <Bug x={a.x} y={a.y} color="#F48FB1" label="A" />
-        <Bug x={b.x} y={b.y} color="#A5D6A7" label="B" />
-
-        {confetti && <Confetti />}
+      <div style={{ fontWeight: 900, color: theme.rosa, fontSize: 22 }}>
+        {title}
+      </div>
+      <div style={{ color: theme.texto, opacity: 0.85, marginBottom: 12 }}>
+        {subtitle}
       </div>
 
-      <p style={{ fontSize: 13, opacity: 0.8, marginTop: 10 }}>
-        Moraleja: cooperando, alcanzamos lo que solos no.
-      </p>
-    </div>
-  );
-}
+      <div className="sync-scene">
+        {/* HUD suave */}
+        <div className="sync-hud sync-anim" />
 
-/* ===================== Timeline ===================== */
-/** Curvas de easing */
-const easeInOut = (x: number) => 0.5 - Math.cos(Math.PI * x) / 2;
-const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+        {/* Suelo / pista */}
+        <div className="ground" />
 
-/** t 0..1 → posiciones y estados */
-function computeTimeline(t: number) {
-  // Fases (en fracciones del timeline)
-  const P1 = 0.00, P2 = 0.18; // A corre y salta, no llega
-  const P3 = 0.36;            // B se acerca
-  const P4 = 0.58;            // A sube a B (apilado)
-  const P5 = 0.72;            // A alcanza cornisa
-  const P6 = 0.86;            // Celebración
-  const P7 = 1.00;            // Reset/loop
-
-  // Posiciones base (en porcentaje 0..1 del contenedor)
-  const startA = { x: 0.18, y: 0.74 };
-  const missEdge = { x: 0.48, y: 0.48 }; // intento de A
-  const meetPoint = { x: 0.46, y: 0.66 }; // donde A y B se encuentran
-  const stackedA = { x: 0.50, y: 0.58 }; // A arriba de B
-  const edgeTop  = { x: 0.60, y: 0.40 }; // bajo cornisa
-  const onLedgeA = { x: 0.62, y: 0.30 }; // A sobre cornisa
-  const startB = { x: 0.06, y: 0.78 };
-
-  // Helpers
-  const between = (a: number, b: number) => clamp01((t - a) / (b - a));
-  const inRange = (a: number, b: number) => t >= a && t < b;
-
-  // A
-  let Ax = startA.x, Ay = startA.y;
-
-  if (inRange(P1, P2)) {
-    const k = easeInOut(between(P1, P2));
-    Ax = lerp(startA.x, missEdge.x, k);
-    // pequeño arco hacia arriba y caída
-    const up = Math.sin(k * Math.PI) * 0.10;
-    Ay = lerp(startA.y, missEdge.y, k) - up;
-  } else if (inRange(P2, P3)) {
-    const k = easeInOut(between(P2, P3));
-    Ax = lerp(missEdge.x, meetPoint.x, k);
-    Ay = lerp(missEdge.y, meetPoint.y, k);
-  } else if (inRange(P3, P4)) {
-    const k = easeInOut(between(P3, P4));
-    Ax = lerp(meetPoint.x, stackedA.x, k);
-    Ay = lerp(meetPoint.y, stackedA.y - 0.10, k); // A se sube
-  } else if (inRange(P4, P5)) {
-    const k = easeInOut(between(P4, P5));
-    Ax = lerp(stackedA.x, edgeTop.x, k);
-    Ay = lerp(stackedA.y - 0.10, edgeTop.y - 0.06, k);
-  } else if (inRange(P5, P6)) {
-    const k = easeInOut(between(P5, P6));
-    Ax = lerp(edgeTop.x, onLedgeA.x, k);
-    Ay = lerp(edgeTop.y - 0.06, onLedgeA.y, k); // A sube a la cornisa
-  } else if (inRange(P6, P7)) {
-    // vuelve a origen (suave) para el loop
-    const k = easeInOut(between(P6, P7));
-    Ax = lerp(onLedgeA.x, startA.x, k);
-    Ay = lerp(onLedgeA.y, startA.y, k);
-  }
-
-  // B
-  let Bx = startB.x, By = startB.y;
-
-  if (inRange(P1, P3)) {
-    // B se acerca mientras A falla y luego se reagrupa
-    const k = easeInOut(between(P1, P3));
-    Bx = lerp(startB.x, meetPoint.x - 0.02, k);
-    By = lerp(startB.y, meetPoint.y + 0.02, k);
-  } else if (inRange(P3, P4)) {
-    // B se “coloca” para hacer de soporte (baja un poquito)
-    const k = easeInOut(between(P3, P4));
-    Bx = lerp(meetPoint.x - 0.02, stackedA.x, k);
-    By = lerp(meetPoint.y + 0.02, stackedA.y + 0.06, k);
-  } else if (inRange(P4, P5)) {
-    // A y B se mueven juntos hacia la cornisa
-    const k = easeInOut(between(P4, P5));
-    Bx = lerp(stackedA.x, edgeTop.x - 0.02, k);
-    By = lerp(stackedA.y + 0.06, edgeTop.y + 0.06, k);
-  } else if (inRange(P5, P6)) {
-    // B se queda abajo, empujando; luego baja un poco más
-    const k = easeInOut(between(P5, P6));
-    Bx = lerp(edgeTop.x - 0.02, edgeTop.x - 0.04, k);
-    By = lerp(edgeTop.y + 0.06, edgeTop.y + 0.10, k);
-  } else if (inRange(P6, P7)) {
-    // vuelve a origen
-    const k = easeInOut(between(P6, P7));
-    Bx = lerp(edgeTop.x - 0.04, startB.x, k);
-    By = lerp(edgeTop.y + 0.10, startB.y, k);
-  }
-
-  // Globos de texto y confetti en ventanas concretas
-  const showNoLlego = t >= P1 + 0.10 && t < P2 + 0.02;
-  const showAyudo   = t >= P3 - 0.06 && t < P4 - 0.02;
-  const showGracias = t >= P5 + 0.06 && t < P6 - 0.04;
-  const confetti    = t >= P6 - 0.04 && t < P6 + 0.06;
-
-  return { a: { x: Ax, y: Ay }, b: { x: Bx, y: By }, showNoLlego, showAyudo, showGracias, confetti };
-}
-
-/* ===================== Primitivas visuales ===================== */
-
-function Bug({ x, y, color, label }: { x: number; y: number; color: string; label: string }) {
-  // leve “bobbing” para que no se vean rígidos
-  const [time, setTime] = useState(0);
-  useEffect(() => {
-    let r: number;
-    const s = performance.now();
-    const loop = (n: number) => {
-      setTime((n - s) / 1000);
-      r = requestAnimationFrame(loop);
-    };
-    r = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(r);
-  }, []);
-  const bob = Math.sin(time * 4) * 6;
-
-  return (
-    <div
-      style={{
-        position: "absolute",
-        left: `${x * 100}%`,
-        top: `${y * 100}%`,
-        transform: "translate(-50%, -50%)",
-        pointerEvents: "none",
-      }}
-      aria-label={`Bicho ${label}`}
-    >
-      <div
-        style={{
-          width: 46,
-          height: 46,
-          borderRadius: "50%",
-          background: color,
-          transform: `translateY(${-bob}px)`,
-          boxShadow: "0 6px 14px rgba(0,0,0,.15)",
-        }}
-      />
-    </div>
-  );
-}
-
-function Speech({ xPct, yPct, text }: { xPct: number; yPct: number; text: string }) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        left: `${xPct}%`,
-        top: `${yPct}%`,
-        transform: "translate(-50%, -100%)",
-        background: "#FFFFFF",
-        border: "2px solid #E3E8EF",
-        borderRadius: 12,
-        padding: "6px 10px",
-        fontWeight: 800,
-        color: "#0D47A1",
-        boxShadow: "0 8px 16px rgba(0,0,0,.08)",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {text}
-    </div>
-  );
-}
-
-function Confetti() {
-  const items = useMemo(() => {
-    const EMO = ["🎉", "🎊", "✨", "⭐", "🎈"];
-    return Array.from({ length: 22 }).map((_, i) => ({
-      id: i,
-      left: Math.random() * 100,
-      delay: Math.random() * 0.8,
-      emoji: EMO[(Math.random() * EMO.length) | 0],
-    }));
-  }, []);
-  return (
-    <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
-      {items.map((p) => (
-        <div
-          key={p.id}
-          style={{
-            position: "absolute",
-            top: -20,
-            left: `${p.left}%`,
-            fontSize: 22,
-            animation: `fall 1.8s ease-in ${p.delay}s forwards`,
-          }}
-        >
-          {p.emoji}
+        {/* Bloque pesado */}
+        <div className="block sync-anim">
+          <div className="block-face">■</div>
         </div>
-      ))}
-      <style>
-        {`@keyframes fall {
-            0% { transform: translateY(0) rotate(0deg); opacity: .9 }
-            100% { transform: translateY(120%) rotate(360deg); opacity: .9 }
-        }`}
-      </style>
+
+        {/* Flechas de dirección (se encienden en sincronía) */}
+        <div className="arrows sync-anim">
+          <span className="a a1">→</span>
+          <span className="a a2">→</span>
+          <span className="a a3">→</span>
+          <span className="a a4">→</span>
+          <span className="a a5">→</span>
+        </div>
+
+        {/* Equipo (5 personas) — llegan, se alinean, empujan a la vez */}
+        <Person idx={1} xStart="18%" xPush="28%" color={theme.azul}    emoji="🧠" />
+        <Person idx={2} xStart="10%" xPush="22%" color={theme.rosa}    emoji="🤝" />
+        <Person idx={3} xStart="6%"  xPush="18%" color={theme.verde}   emoji="💪" />
+        <Person idx={4} xStart="2%"  xPush="14%" color={theme.amarillo} emoji="🎯" />
+        <Person idx={5} xStart="-4%" xPush="10%" color="#7C4DFF"        emoji="⚡" />
+
+        {/* Banda de “sincronización” (metrónomo visual) */}
+        <div className="syncline sync-anim" />
+
+        {/* Meta y celebración */}
+        <div className="goal">
+          <div className="flag">★</div>
+        </div>
+        <div className="confetti sync-anim" />
+        <div className="done sync-anim">✓</div>
+      </div>
     </div>
   );
+};
+
+export default TeamWorkMiniAnim;
+
+/* ================= Subcomponentes ================= */
+function Person({
+  idx,
+  xStart,
+  xPush,
+  color,
+  emoji,
+}: {
+  idx: 1 | 2 | 3 | 4 | 5;
+  xStart: string; // posición horizontal de llegada
+  xPush: string;  // posición cuando empuja
+  color: string;
+  emoji: string;
+}) {
+  // Cada persona tiene su propio timing: llegan (0–25%), se alinean (25–40%),
+  // EMPUJAN (40–65% todos a la vez), celebran (65–75%), vuelven (75–100%).
+  return (
+    <div
+      className={`person p${idx} sync-anim`}
+      style={
+        {
+          // punto base vertical
+          bottom: "22%",
+          // se anima left vía keyframes
+          "--xStart": xStart,
+          "--xPush": xPush,
+          "--c": color,
+        } as React.CSSProperties
+      }
+    >
+      <div className="avatar" />
+      <div className="emoji">{emoji}</div>
+      {/* efecto “fuerza” al empujar */}
+      <div className="force sync-anim" />
+    </div>
+  );
+}
+
+/* ================= CSS ================= */
+function css(DUR: number) {
+  return `
+:root { --dur: ${DUR}s; }
+
+/* Escena */
+.sync-scene{
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/9;
+  border: 1px solid ${theme.border};
+  border-radius: 16px;
+  overflow: hidden;
+  background: ${theme.bgSoft};
+}
+
+/* HUD sutil */
+.sync-hud{
+  position:absolute; inset:0; pointer-events:none;
+  background:
+    radial-gradient(40% 20% at 60% 0%, rgba(25,118,210,.10), transparent 60%),
+    radial-gradient(40% 26% at 20% 10%, rgba(233,30,99,.08), transparent 60%);
+  animation: drift var(--dur) ease-in-out infinite;
+}
+
+/* Suelo */
+.ground{
+  position:absolute; left:0; right:0; bottom:18%;
+  height: 8px; border-radius: 6px;
+  background: linear-gradient(180deg,#E0E7EF 0%, #CBD5E1 100%);
+  box-shadow: 0 10px 22px rgba(0,0,0,.08);
+}
+
+/* Bloque pesado */
+.block{
+  position:absolute; left: 34%; bottom: calc(18% + 8px);
+  width: 180px; height: 90px; border-radius: 14px;
+  background: linear-gradient(180deg,#B0BEC5 0%, #90A4AE 100%);
+  border: 2px solid ${theme.border};
+  box-shadow: 0 18px 30px rgba(0,0,0,.12);
+  transform: translateX(0);
+  animation: blockMove var(--dur) ease-in-out infinite;
+}
+.block-face{
+  position:absolute; left: 10px; top: 8px; font-size: 20px; color: #5B6B7A; opacity:.7;
+}
+
+/* Flechas de dirección */
+.arrows{
+  position:absolute; left: 36%; bottom: calc(18% + 100px);
+  display:flex; gap: 6px;
+}
+.a{ font-weight: 900; color: ${theme.texto}; opacity:.12; transform: translateY(0); }
+.a1{ animation: arrowBlink var(--dur) linear infinite; animation-delay: calc(var(--dur) * .38); }
+.a2{ animation: arrowBlink var(--dur) linear infinite; animation-delay: calc(var(--dur) * .42); }
+.a3{ animation: arrowBlink var(--dur) linear infinite; animation-delay: calc(var(--dur) * .46); }
+.a4{ animation: arrowBlink var(--dur) linear infinite; animation-delay: calc(var(--dur) * .50); }
+.a5{ animation: arrowBlink var(--dur) linear infinite; animation-delay: calc(var(--dur) * .54); }
+
+/* Línea de sincronía (metrónomo) */
+.syncline{
+  position:absolute; left:8%; right:8%; bottom: calc(18% + 120px);
+  height: 6px; border-radius: 6px;
+  background: repeating-linear-gradient(90deg, rgba(0,0,0,.08) 0 14px, transparent 14px 28px);
+  overflow:hidden;
+}
+.syncline::after{
+  content:\"\"; position:absolute; left: -20%; top:0; bottom:0; width: 40%;
+  background: linear-gradient(90deg, rgba(25,118,210,.15), rgba(233,30,99,.15));
+  animation: sweep var(--dur) linear infinite;
+}
+
+/* Personas */
+.person{
+  position:absolute; left: var(--xStart); /* se animará en keyframes */
+  transform: translate(-50%, 0);
+  display:grid; justify-items:center; gap: 6px;
+}
+.avatar{
+  width: 58px; height: 58px; border-radius: 50%;
+  background: #fff; border: 5px solid var(--c);
+  box-shadow: 0 10px 22px rgba(0,0,0,.12);
+}
+.emoji{ font-size: 22px; line-height: 1; transform: translateY(-44px); }
+
+/* efecto “fuerza” */
+.force{
+  position:absolute; left:50%; bottom: 64px; transform: translate(-50%, 0) scale(.7);
+  width: 90px; height: 90px; border-radius: 50%;
+  background: conic-gradient(rgba(0,0,0,0) 0 25%, rgba(0,0,0,0) 25% 100%);
+  mix-blend-mode: multiply; opacity: 0;
+  animation: forcePulse var(--dur) ease-out infinite;
+}
+
+/* Meta */
+.goal{
+  position:absolute; right: 10%; bottom: calc(18% + 50px);
+}
+.flag{
+  width: 50px; height: 50px; border-radius: 50%;
+  display:grid; place-items:center; font-size: 22px;
+  background: #fff; border: 4px solid ${theme.verde}; color:${theme.verde};
+  box-shadow: 0 10px 22px rgba(46,125,50,.20);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+/* Celebración */
+.confetti{
+  position:absolute; right: 9%; bottom: calc(18% + 120px);
+  width: 140px; height: 140px; pointer-events:none; opacity:0; filter: blur(.2px);
+  background:
+    radial-gradient(6px 6px at 20% 30%, rgba(255,179,0,.95), transparent 40%),
+    radial-gradient(6px 6px at 60% 40%, rgba(233,30,99,.95), transparent 40%),
+    radial-gradient(6px 6px at 40% 70%, rgba(25,118,210,.95), transparent 40%),
+    radial-gradient(6px 6px at 80% 60%, rgba(46,125,50,.95), transparent 40%),
+    radial-gradient(5px 5px at 30% 60%, rgba(0,0,0,.35), transparent 40%);
+  animation: confetti var(--dur) steps(1) infinite;
+}
+.done{
+  position:absolute; right: 12%; bottom: calc(18% + 70px);
+  width: 56px; height: 56px; border-radius: 50%;
+  display:grid; place-items:center; font-weight:900;
+  background: #fff; border: 4px solid ${theme.verde}; color:${theme.verde};
+  box-shadow: 0 8px 18px rgba(46,125,50,.20);
+  transform: scale(0);
+  animation: donePop var(--dur) ease-out infinite;
+}
+
+/* ===== Animaciones ===== */
+
+/* HUD */
+@keyframes drift{
+  0%{ transform: translateY(0) }
+  50%{ transform: translateY(-8px) }
+  100%{ transform: translateY(0) }
+}
+
+/* metrónomo */
+@keyframes sweep{
+  0%{ left: -30% }
+  50%{ left: 100% }
+  100%{ left: -30% }
+}
+
+/* flechas se encienden solo en la ventana de empuje */
+@keyframes arrowBlink{
+  0%, 38% { opacity:.12; transform: translateY(0) }
+  40%     { opacity:1;   transform: translateY(-2px) }
+  65%     { opacity:1;   transform: translateY(-2px) }
+  67%,100%{ opacity:.12; transform: translateY(0) }
+}
+
+/* “fuerza” de cada persona: ON durante el empuje */
+@keyframes forcePulse{
+  0%, 38% { opacity:0; transform: translate(-50%,0) scale(.7) }
+  40%     { opacity:.9; transform: translate(-50%,0) scale(1) }
+  65%     { opacity:.9; transform: translate(-50%,0) scale(1.05) }
+  67%,100%{ opacity:0;  transform: translate(-50%,0) scale(.7) }
+}
+
+/* Personas: llegada → alineación → empuje → retorno */
+.p1{ animation: personMove1 var(--dur) ease-in-out infinite; }
+.p2{ animation: personMove2 var(--dur) ease-in-out infinite; }
+.p3{ animation: personMove3 var(--dur) ease-in-out infinite; }
+.p4{ animation: personMove4 var(--dur) ease-in-out infinite; }
+.p5{ animation: personMove5 var(--dur) ease-in-out infinite; }
+
+@keyframes personMove1{
+  0%   { left: var(--xStart); }
+  20%  { left: var(--xPush); }   /* llega */
+  38%  { left: var(--xPush); }   /* alinea */
+  65%  { left: calc(var(--xPush) + 2%); } /* empuja (ligero avance) */
+  80%  { left: var(--xPush); }
+  100% { left: var(--xStart); }
+}
+@keyframes personMove2{
+  0%   { left: var(--xStart); }
+  22%  { left: var(--xPush); }
+  38%  { left: var(--xPush); }
+  65%  { left: calc(var(--xPush) + 2%); }
+  80%  { left: var(--xPush); }
+  100% { left: var(--xStart); }
+}
+@keyframes personMove3{
+  0%   { left: var(--xStart); }
+  24%  { left: var(--xPush); }
+  38%  { left: var(--xPush); }
+  65%  { left: calc(var(--xPush) + 2%); }
+  80%  { left: var(--xPush); }
+  100% { left: var(--xStart); }
+}
+@keyframes personMove4{
+  0%   { left: var(--xStart); }
+  26%  { left: var(--xPush); }
+  38%  { left: var(--xPush); }
+  65%  { left: calc(var(--xPush) + 2%); }
+  80%  { left: var(--xPush); }
+  100% { left: var(--xStart); }
+}
+@keyframes personMove5{
+  0%   { left: var(--xStart); }
+  28%  { left: var(--xPush); }
+  38%  { left: var(--xPush); }
+  65%  { left: calc(var(--xPush) + 2%); }
+  80%  { left: var(--xPush); }
+  100% { left: var(--xStart); }
+}
+
+/* Bloque: primero vibra (intentos descoordinados), luego AVANZA fuerte cuando todos empujan */
+@keyframes blockMove{
+  0%   { transform: translateX(0) }
+  10%  { transform: translateX(0) }
+  18%  { transform: translateX(-2px) }
+  26%  { transform: translateX(2px) }
+  34%  { transform: translateX(-2px) }
+  /* ventana de empuje coordinado */
+  40%  { transform: translateX(0) }
+  65%  { transform: translateX(220px) }
+  75%  { transform: translateX(220px) } /* pausa celebración */
+  100% { transform: translateX(0) }     /* reset suave */
+}
+
+/* celebración */
+@keyframes confetti{
+  0%, 74% { opacity: 0 }
+  76%     { opacity: .95 }
+  88%     { opacity: 0 }
+  100%    { opacity: 0 }
+}
+@keyframes donePop{
+  0%, 74% { transform: scale(0) }
+  76%     { transform: scale(1.05) }
+  80%     { transform: scale(1) }
+  100%    { transform: scale(0) }
+}
+@keyframes breathe{
+  0%{ transform: scale(1) }
+  50%{ transform: scale(1.06) }
+  100%{ transform: scale(1) }
+}
+
+/* Celebración elementos */
+.confetti{
+  position:absolute; right: 14%; bottom: calc(18% + 160px);
+  width: 140px; height: 140px; pointer-events:none; opacity:0; filter: blur(.2px);
+  background:
+    radial-gradient(6px 6px at 20% 30%, rgba(255,179,0,.95), transparent 40%),
+    radial-gradient(6px 6px at 60% 40%, rgba(233,30,99,.95), transparent 40%),
+    radial-gradient(6px 6px at 40% 70%, rgba(25,118,210,.95), transparent 40%),
+    radial-gradient(6px 6px at 80% 60%, rgba(46,125,50,.95), transparent 40%),
+    radial-gradient(5px 5px at 30% 60%, rgba(0,0,0,.35), transparent 40%);
+}
+.done{
+  position:absolute; right: 16%; bottom: calc(18% + 110px);
+  width: 56px; height: 56px; border-radius: 50%;
+  display:grid; place-items:center; font-weight:900;
+  background: #fff; border: 4px solid ${theme.verde}; color:${theme.verde};
+  box-shadow: 0 8px 18px rgba(46,125,50,.20);
+  transform: scale(0);
+}
+
+/* Responsive */
+@media (max-width: 640px){
+  .block{ width: 160px; height: 80px; }
+  .avatar{ width: 54px; height: 54px; }
+  .emoji{ font-size: 20px; transform: translateY(-40px); }
+}
+`;
 }

@@ -1,39 +1,49 @@
-// ============================================================
-// 📘 Prisma Schema para UDD Emprendimiento (Backend Express)
-// Base de datos: SQLite (archivo local dev.db)
-// ============================================================
-
+// ===== PRISMA CONFIG =====
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl"]
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
-// ============================================================
-// Modelo: Profesor
-// ============================================================
-// Corresponde a /profesores en tu API
-// Se crea con: idProfesor, correo, contrasena
-// ============================================================
-model Profesor {
-  idProfesor  String   @id            // Identificador del profesor (PK)
-  correo      String?                  // Correo opcional
-  contrasena  String                  // Contraseña del profesor
-  salas       Sala[]                  // Relación 1:N con salas
+// ============== MODELOS ==============
+// Salas, Equipos e Integrantes de ejemplo con nombres en español.
+
+model Sala {
+  id       Int      @id @default(autoincrement())
+  codigo   String   @unique
+  creadaEn DateTime @default(now())
+
+  // LADO OPUESTO de Equipo.sala
+  equipos Equipo[] @relation("SalaEquipos")
+
+  @@map("salas")
 }
 
-// ============================================================
-// Sala
-// ============================================================
-// Corresponde a /salas en tu API
-// Se crea con: idSala, fecha, profesorId (opcional)
-// ============================================================
-model Sala {
-  idSala      String      @id          // Código de la sala (PK)
-  fecha       DateTime                   // Fecha de creación
-  profesorId  String?                     // ID del profesor (opcional)
-  profesor    Profesor?   @relation(fields: [profesorId], references: [idProfesor])
+model Equipo {
+  id     Int    @id @default(autoincrement())
+  nombre String @map("nombre")
+
+  // FK a Sala
+  salaId Int  @map("sala_id")
+  sala   Sala @relation("SalaEquipos", fields: [salaId], references: [id])
+
+  // (opcional) relación con Integrantes
+  integrantes Integrante[] @relation("EquipoIntegrantes")
+
+  @@map("equipos")
+}
+
+model Integrante {
+  id     Int    @id @default(autoincrement())
+  nombre String
+
+  // FK a Equipo
+  equipoId Int    @map("equipo_id")
+  equipo   Equipo @relation("EquipoIntegrantes", fields: [equipoId], references: [id])
+
+  @@map("integrantes")
 }

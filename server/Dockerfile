@@ -1,33 +1,23 @@
-# ---------- build ----------
-FROM node:20-bookworm-slim AS build
+FROM node:20-alpine
+
+# OpenSSL para prisma engines
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
-
+# Instala deps primero (layer cache)
 COPY package*.json ./
 RUN npm ci
 
-COPY tsconfig.json ./
+# Copia prisma y genera el cliente en build
 COPY prisma ./prisma
-COPY src ./src
-
-RUN npx prisma generate
-RUN npx tsc
-
-# ---------- runtime ----------
-FROM node:20-bookworm-slim
-WORKDIR /app
-ENV NODE_ENV=production
-
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
-
-COPY --from=build /app/package*.json ./
-RUN npm ci --omit=dev
-
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/dist ./dist
-
 RUN npx prisma generate
 
+# Copia el resto del código
+COPY . .
+
+ENV PORT=4000
 EXPOSE 4000
-CMD ["node", "dist/index.js"]
+
+# En desarrollo: ts-node-dev
+CMD ["npm","run","dev"]

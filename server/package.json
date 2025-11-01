@@ -1,32 +1,26 @@
 {
-  "name": "server",
-  "version": "1.0.0",
-  "main": "dist/index.js",
-  "license": "MIT",
+  "name": "udd-server",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
-    "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma",
-    "prisma:seed": "ts-node prisma/seed.ts",
-    "studio": "prisma studio --schema prisma/schema.prisma"
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
+    "@prisma/client": "^5.20.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.21.2",
-    "zod": "^3.25.76"
+    "express": "^4.19.2",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
-    "@types/express": "^4.17.24",
-    "@types/node": "^20.11.30",
-    "nodemon": "^3.1.10",
-    "prisma": "^5.22.0",
-    "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.3.3"
+    "@types/express": "^5.0.5",
+    "@types/node": "^24.9.2",
+    "prisma": "^5.20.0",
+    "typescript": "^5.6.3",
+    "tsx": "^4.19.0"
   }
 }
