@@ -7,15 +7,18 @@ generator client {
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")   // 👈 agrega esto
+
 }
 
+
 // ============== MODELOS ==============
-// Salas, Equipos e Integrantes de ejemplo con nombres en español.
 
 model Sala {
-  id       Int      @id @default(autoincrement())
-  codigo   String   @unique
-  creadaEn DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  codigo    String   @unique
+  anfitrion String // ⬅️ NUEVO: lo usas en POST /salas
+  creadaEn  DateTime @default(now())
 
   // LADO OPUESTO de Equipo.sala
   equipos Equipo[] @relation("SalaEquipos")
@@ -31,15 +34,18 @@ model Equipo {
   salaId Int  @map("sala_id")
   sala   Sala @relation("SalaEquipos", fields: [salaId], references: [id])
 
-  // (opcional) relación con Integrantes
+  // relación con Integrantes
   integrantes Integrante[] @relation("EquipoIntegrantes")
 
+  // ⬅️ Único compuesto para permitir where: { salaId_nombre: { ... } }
+  @@unique([salaId, nombre], name: "salaId_nombre")
   @@map("equipos")
 }
 
 model Integrante {
-  id     Int    @id @default(autoincrement())
-  nombre String
+  id      Int     @id @default(autoincrement())
+  nombre  String
+  carrera String? @map("carrera") // ⬅️ NUEVO: opcional, lo envías en /unirse
 
   // FK a Equipo
   equipoId Int    @map("equipo_id")

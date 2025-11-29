@@ -1,93 +1,267 @@
-
 import React, { useEffect, useRef } from "react";
 
 type Props = {
-  /** Si true, muestra un botón “Continuar” (para el profesor). */
   showContinue?: boolean;
-  /** Callback cuando el profe quiere pasar a la siguiente pantalla. */
   onContinue?: () => void;
 };
 
 /**
- * Animación fluida en canvas (loop):
- * 0-2s: micro aparece (fade & scale-in)
- * 2-5s: burbujas (Problema, Usuario, Solución) orbitan
- * 5-7s: gráfico de barras crece (resultado)
- * 7-8s: aplausos + “¡Excelente presentación!”
- * 8s -> reinicia
+ * PitchAnimacion (Versión Final Robusta: Loop Estable)
  */
 export default function PitchAnimacion({ showContinue, onContinue }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const startRef = useRef<number>(0);
+  
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const lastSpeechRef = useRef<number>(0);
+  const lastClapRef = useRef<number>(0);
 
-  // util: map and clamp
-  const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
-  const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
-  const easeInOut = (t: number) => (t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2);
+  const initAudio = () => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+    return audioCtxRef.current;
+  };
+
+  const playCartoonVoice = () => {
+    const ctx = initAudio();
+    const t = ctx.currentTime;
+    for (let i = 0; i < 3; i++) {
+        const start = t + i * 0.08;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = "triangle"; 
+        const pitch = 400 + Math.random() * 300; 
+        osc.frequency.setValueAtTime(pitch, start);
+        osc.frequency.linearRampToValueAtTime(pitch - 100, start + 0.08);
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.1, start + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.08);
+        osc.start(start); osc.stop(start + 0.09);
+    }
+  };
+
+  const playClap = () => {
+    const ctx = initAudio();
+    const t = ctx.currentTime;
+    for(let i=0; i<3; i++) {
+        const start = t + Math.random() * 0.05; 
+        const bufferSize = ctx.sampleRate * 0.15; 
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let j = 0; j < bufferSize; j++) data[j] = (Math.random() * 2 - 1) * 0.8;
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+        noise.playbackRate.value = 0.8 + Math.random() * 0.4;
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 1000; 
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.05, start); 
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.1);
+        noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+        noise.start(start);
+    }
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
-    const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    let dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
-    let width = 1200, height = 675;
+    // --- FIX DE REDIMENSIONADO ---
     const resize = () => {
-      const parent = canvas.parentElement!;
-      const w = parent.clientWidth;
-      const h = (w * 9) / 16;
-      width = Math.floor(w * DPR);
-      height = Math.floor(h * DPR);
-      canvas.width = width;
-      canvas.height = height;
-      canvas.style.width = `${Math.floor(w)}px`;
-      canvas.style.height = `${Math.floor(h)}px`;
-      ctx.setTransform(DPR, 0, 0, DPR, 0, 0); // para no dibujar “chico”
+      const parent = canvas.parentElement;
+      if (parent) {
+        const rect = parent.getBoundingClientRect();
+        const w = rect.width || 900; 
+        const h = rect.height || (w * 9 / 16);
+        
+        const newWidth = Math.round(w * dpr);
+        const newHeight = Math.round(h * dpr);
+
+        if (canvas.width !== newWidth || canvas.height !== newHeight) {
+            canvas.width = newWidth;
+            canvas.height = newHeight;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+        
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+      }
     };
+    
     resize();
     const ro = new ResizeObserver(resize);
-    ro.observe(canvas.parentElement!);
+    if (canvas.parentElement) ro.observe(canvas.parentElement);
 
-    const loop = (now: number) => {
-      if (!startRef.current) startRef.current = now;
-      let t = (now - startRef.current) / 1000; // seg
-      const DURATION = 8;                       // loop cada 8s
-      t = t % DURATION;
-
-      // background
-      ctx.clearRect(0, 0, width, height);
-      const W = width / DPR, H = height / DPR;
-
-      // gradiente sutil
-      const g = ctx.createLinearGradient(0, 0, 0, H);
-      g.addColorStop(0, "#EEF6FF");
-      g.addColorStop(1, "#FFFFFF");
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, W, H);
-
-      // “escenario” (tarima)
-      ctx.fillStyle = "#E3E8EF";
-      ctx.fillRect(0, H - 64, W, 64);
-
-      // timeline por fases
-      // F0: 0–2 (micro aparece)
-      // F1: 2–5 (burbujas orbitando)
-      // F2: 5–7 (barras suben)
-      // F3: 7–8 (aplausos + texto)
-      drawMicrophone(ctx, W, H, t);
-      drawBubbles(ctx, W, H, t);
-      drawBars(ctx, W, H, t, easeInOut);
-      drawApplause(ctx, W, H, t, easeOut);
-
-      rafRef.current = requestAnimationFrame(loop);
+    const DUR = 8; 
+    const PALETTE = {
+      bg: "#101828",       
+      floor: "#1F2937",
+      speakerSkin: "#FFCCBC",
+      speakerSuit: "#1976D2",
+      speakerHair: "#3E2723",
+      mic: "#CFD8DC",
+      podium: "#37474F",
+      audienceSkin: "#FFCCBC", 
+      audienceClothes: ["#546E7A", "#455A64", "#607D8B"], 
+      clapSkin: "#FFCCBC",
+      seat: "#263238"
     };
-    rafRef.current = requestAnimationFrame(loop);
 
+    const audience = [
+        { x: 0.60, y: 0.55, scale: 0.85, color: PALETTE.audienceClothes[1] },
+        { x: 0.75, y: 0.55, scale: 0.85, color: PALETTE.audienceClothes[2] },
+        { x: 0.90, y: 0.55, scale: 0.85, color: PALETTE.audienceClothes[0] },
+        { x: 0.65, y: 0.75, scale: 1.0, color: PALETTE.audienceClothes[0] },
+        { x: 0.85, y: 0.75, scale: 1.0, color: PALETTE.audienceClothes[1] },
+    ];
+
+    const drawSpotlight = (w: number, h: number) => {
+        ctx.save();
+        const grad = ctx.createRadialGradient(w*0.25, 0, 20, w*0.25, h*0.8, 300);
+        grad.addColorStop(0, "rgba(255,255,255,0.25)");
+        grad.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(w*0.25 - 60, -50);
+        ctx.lineTo(w*0.25 + 60, -50);
+        ctx.lineTo(w*0.25 + 140, h);
+        ctx.lineTo(w*0.25 - 140, h);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.08)";
+        ctx.beginPath();
+        ctx.ellipse(w*0.25, h*0.75, 100, 30, 0, 0, Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+    };
+
+    const drawSpeaker = (w: number, h: number, t: number) => {
+        const cx = w * 0.25;
+        const cy = h * 0.75;
+        const bob = Math.sin(t * 12) * 1.5; 
+        const armWaving = Math.sin(t * 8) * 5;
+        const armRightWaving = Math.cos(t * 7) * 3; 
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.fillStyle = PALETTE.speakerSuit;
+        ctx.beginPath(); ctx.moveTo(-35, -90 + bob); ctx.lineTo(35, -90 + bob); ctx.lineTo(40, 20); ctx.lineTo(-40, 20); ctx.fill();
+        ctx.fillStyle = PALETTE.speakerSkin; ctx.fillRect(-8, -105 + bob, 16, 20);
+        ctx.fillStyle = PALETTE.speakerSkin; ctx.beginPath(); ctx.arc(0, -115 + bob, 22, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = PALETTE.speakerHair; ctx.beginPath();
+        ctx.moveTo(-22, -128 + bob); ctx.quadraticCurveTo(0, -155 + bob, 22, -128 + bob);
+        ctx.lineTo(24, -110 + bob); ctx.quadraticCurveTo(26, -95 + bob, 0, -100 + bob);
+        ctx.quadraticCurveTo(-26, -95 + bob, -24, -110 + bob); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = PALETTE.speakerSuit; ctx.lineWidth = 12; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(-30, -80 + bob); ctx.quadraticCurveTo(-50 - armWaving, -90 - armWaving, -60, -60 - armWaving); ctx.stroke();
+        ctx.fillStyle = PALETTE.speakerSkin; ctx.beginPath(); ctx.arc(-60, -60 - armWaving, 7, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(30, -80 + bob); ctx.quadraticCurveTo(50 + armRightWaving, -85 + armRightWaving, 55, -55 - armRightWaving); ctx.stroke();
+        ctx.beginPath(); ctx.arc(55, -55 - armRightWaving, 7, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = PALETTE.podium; ctx.beginPath(); ctx.moveTo(-50, -80); ctx.lineTo(50, -80); ctx.lineTo(40, 40); ctx.lineTo(-40, 40); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.1)"; ctx.fillRect(-48, -80, 96, 5);
+        ctx.strokeStyle = "#263238"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -80); ctx.quadraticCurveTo(0, -100, 0, -110); ctx.stroke();
+        ctx.fillStyle = PALETTE.mic; ctx.beginPath(); ctx.ellipse(0, -110, 6, 9, 0, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = "#78909C"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-4, -110); ctx.lineTo(4, -110); ctx.moveTo(-4, -113); ctx.lineTo(4, -113); ctx.stroke();
+        ctx.restore();
+    };
+
+    const drawWaves = (w: number, h: number, t: number) => {
+        const cx = w * 0.25 + 10; const cy = h * 0.75 - 110; 
+        if (t % 2.5 < 0.1 && Date.now() - lastSpeechRef.current > 2000 && t < 5.5) {
+            playCartoonVoice(); lastSpeechRef.current = Date.now();
+        }
+        ctx.save(); ctx.translate(cx, cy);
+        for(let i=0; i<3; i++) {
+            const localT = (t + i*0.6) % 1.8;
+            const r = 10 + localT * 180;
+            const alpha = Math.max(0, 1 - localT);
+            if (t < 6) { 
+                ctx.beginPath(); ctx.arc(0, 0, r, -0.5, 0.5);
+                ctx.strokeStyle = `rgba(255, 202, 40, ${alpha * 0.8})`; ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.stroke();
+            }
+        }
+        ctx.restore();
+    };
+
+    const drawAudience = (w: number, h: number, t: number) => {
+        const isClapping = t > 5 && t < 7.5;
+        if (isClapping && Date.now() - lastClapRef.current > 80) { 
+            playClap(); lastClapRef.current = Date.now();
+        }
+        audience.forEach((m, i) => {
+            const ax = w * m.x; const ay = h * m.y;
+            const bounce = isClapping ? Math.abs(Math.sin(t * 15 + i)) * 5 : 0;
+            ctx.save(); ctx.translate(ax, ay - bounce); ctx.scale(m.scale, m.scale);
+            ctx.fillStyle = PALETTE.seat; ctx.beginPath(); 
+            if(ctx.roundRect) ctx.roundRect(-35, -10, 70, 60, 8); else ctx.rect(-35,-10,70,60);
+            ctx.fill();
+            ctx.fillStyle = "#37474F"; ctx.fillRect(-30, 40, 60, 20);
+            ctx.fillStyle = m.color; ctx.beginPath(); ctx.ellipse(0, 40, 25, 35, 0, Math.PI, 0); ctx.fill();
+            ctx.fillStyle = PALETTE.audienceSkin; ctx.fillRect(-6, 5, 12, 10);
+            ctx.beginPath(); ctx.arc(0, -5, 18, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = "#3E2723"; ctx.beginPath(); ctx.arc(0, -8, 20, Math.PI*1.1, -Math.PI*0.1); ctx.closePath(); ctx.fill();
+            if (isClapping) {
+                const clapCycle = Math.sin(t * 20 + i); const handDist = Math.max(0, clapCycle * 8);
+                ctx.fillStyle = PALETTE.clapSkin;
+                ctx.beginPath(); ctx.ellipse(-10 - handDist, 25, 6, 8, -0.5, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(10 + handDist, 25, 6, 8, 0.5, 0, Math.PI*2); ctx.fill();
+                if (handDist < 2) {
+                    ctx.strokeStyle = "#FFF"; ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.moveTo(-15, 15); ctx.lineTo(-20, 10);
+                    ctx.moveTo(15, 15); ctx.lineTo(20, 10); ctx.stroke();
+                }
+            }
+            ctx.restore();
+        });
+    };
+
+    const drawText = (w: number, h: number, t: number) => {
+        if (t > 5.5) {
+            const alpha = Math.min(1, (t - 5.5) * 2);
+            const scale = 1 + Math.sin(t*10)*0.05; 
+            ctx.save(); ctx.translate(w/2, h*0.2); ctx.scale(scale, scale); ctx.globalAlpha = alpha;
+            ctx.fillStyle = "#FFCA28"; ctx.shadowColor = "rgba(0,0,0,0.3)"; ctx.shadowBlur = 10;
+            ctx.font = "900 42px Inter, sans-serif"; ctx.textAlign = "center";
+            ctx.fillText("¡GRAN IDEA!", 0, 0); ctx.restore();
+        }
+    };
+
+    const loopFn = (now: number) => {
+        if (!startRef.current) startRef.current = now;
+        const tSec = (now - startRef.current) / 1000;
+        const mod = tSec % DUR;
+        const w = canvas.width / dpr;
+        const h = canvas.height / dpr;
+
+        // IMPORTANTE: Dibujar siempre el fondo para borrar el frame anterior
+        ctx.fillStyle = PALETTE.bg;
+        ctx.fillRect(0, 0, w, h);
+        
+        if (w > 0 && h > 0) {
+             ctx.fillStyle = PALETTE.floor;
+             ctx.fillRect(0, h * 0.75, w, h * 0.25);
+             drawSpotlight(w, h);
+             drawAudience(w, h, mod); 
+             drawSpeaker(w, h, mod);
+             if (mod < 5) drawWaves(w, h, mod);
+             drawText(w, h, mod);
+        }
+
+        // FIX: Siempre pedir el siguiente frame, independientemente de showContinue
+        rafRef.current = requestAnimationFrame(loopFn);
+    };
+
+    rafRef.current = requestAnimationFrame(loopFn);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      ro.disconnect();
+      if(canvas.parentElement) ro.unobserve(canvas.parentElement);
     };
-  }, []);
+  }, []); // Se eliminó la dependencia [showContinue] para que el loop sea eterno y estable
 
   return (
     <div
@@ -105,218 +279,42 @@ export default function PitchAnimacion({ showContinue, onContinue }: Props) {
       <h2 style={{ margin: 0, marginBottom: 8, fontSize: 26, fontWeight: 900, color: "#1976D2" }}>
         Comunicación y Pitch
       </h2>
-      <p style={{ marginTop: 0, color: "#0D47A1" }}>
-        Presenta tu idea, comunica valor y ¡genera impacto!
+      <p style={{ marginTop: 0, color: "#0D47A1", marginBottom: 16 }}>
+        Transmite tu idea con claridad. ¡Haz que te escuchen!
       </p>
 
-      <div
-        style={{
+      <div style={{
           position: "relative",
           width: "100%",
           aspectRatio: "16/9",
           borderRadius: 16,
-          border: "2px dashed #E3E8EF",
           overflow: "hidden",
-          background: "linear-gradient(180deg,#EEF6FF, #FFFFFF)",
-        }}
-      >
-        <canvas ref={canvasRef} />
+          background: "#101828",
+          boxShadow: "inset 0 0 50px rgba(0,0,0,0.5)"
+      }}>
+        <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />
       </div>
 
       {showContinue && (
-        <div style={{ marginTop: 12 }}>
+        <div style={{ marginTop: 16 }}>
           <button
             onClick={onContinue}
             style={{
-              padding: "10px 14px",
-              borderRadius: 12,
+              padding: "12px 24px",
+              borderRadius: 99,
               border: "none",
               background: "#1976D2",
               color: "#fff",
-              fontWeight: 900,
+              fontWeight: 800,
               cursor: "pointer",
-              boxShadow: "0 6px 12px rgba(0,0,0,.12)",
+              boxShadow: "0 6px 16px rgba(25,118,210,.3)",
+              fontSize: 16
             }}
           >
-            Continuar
+            Continuar a Preparación
           </button>
         </div>
       )}
     </div>
   );
-}
-
-/* ---------- DRAW HELPERS ---------- */
-
-function drawMicrophone(ctx: CanvasRenderingContext2D, W: number, H: number, t: number) {
-  // 0–2s: aparece (scale+fade)
-  const p = clamp01((t - 0) / 2);
-  const s = 0.7 + 0.3 * easeOut(p);
-  const alpha = 0.2 + 0.8 * easeOut(p);
-
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.translate(W * 0.5, H * 0.62);
-  ctx.scale(s, s);
-
-  // base
-  ctx.fillStyle = "#90A4AE";
-  roundedRect(ctx, -26, 30, 52, 14, 7);
-  ctx.fill();
-  // cuerpo
-  ctx.fillStyle = "#546E7A";
-  roundedRect(ctx, -8, -30, 16, 60, 8);
-  ctx.fill();
-  // cabeza
-  ctx.fillStyle = "#1976D2";
-  ctx.beginPath();
-  ctx.ellipse(0, -52, 22, 28, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // rejilla
-  ctx.strokeStyle = "rgba(255,255,255,.7)";
-  ctx.lineWidth = 2;
-  for (let i = -14; i <= 14; i += 6) {
-    ctx.beginPath();
-    ctx.moveTo(-18, -52 + i);
-    ctx.lineTo(18, -52 + i);
-    ctx.stroke();
-  }
-
-  ctx.restore();
-}
-
-function drawBubbles(ctx: CanvasRenderingContext2D, W: number, H: number, t: number) {
-  // 2–5s: orbitan alrededor del micrófono (centro)
-  const p = clamp01((t - 2) / 3);
-  if (p <= 0) return;
-
-  const cx = W * 0.5, cy = H * 0.42;
-  const r = 120;
-  const a = 1 * Math.PI * p; // gira medio círculo en 3s
-
-  const items = [
-    { label: "Problema", color: "#F48FB1", shift: 0 },
-    { label: "Usuario", color: "#FFCA28", shift: 0.7 },
-    { label: "Solución", color: "#66BB6A", shift: 1.4 },
-  ];
-
-  items.forEach((it, i) => {
-    const ang = a + it.shift;
-    const x = cx + Math.cos(ang) * r;
-    const y = cy + Math.sin(ang) * (r * 0.6);
-
-    ctx.save();
-    ctx.globalAlpha = 0.25 + 0.75 * p;
-    ctx.fillStyle = it.color;
-    ctx.beginPath();
-    ctx.arc(x, y, 22, 0, Math.PI * 2);
-    ctx.fill();
-
-    // etiqueta
-    ctx.font = "bold 14px Inter, ui-sans-serif";
-    ctx.fillStyle = "#0D47A1";
-    ctx.textAlign = "center";
-    ctx.fillText(it.label, x, y + 42);
-    ctx.restore();
-  });
-
-  // líneas “conexión”
-  ctx.save();
-  ctx.strokeStyle = "rgba(25,118,210,.5)";
-  ctx.lineWidth = 2;
-  items.forEach((it) => {
-    const ang = a + it.shift;
-    const x = cx + Math.cos(ang) * r;
-    const y = cy + Math.sin(ang) * (r * 0.6);
-    ctx.beginPath();
-    ctx.moveTo(cx, cy + 60);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  });
-  ctx.restore();
-}
-
-function drawBars(
-  ctx: CanvasRenderingContext2D,
-  W: number,
-  H: number,
-  t: number,
-  easeInOut: (x: number) => number
-) {
-  // 5–7s: barras crecen
-  const p = clamp01((t - 5) / 2);
-  if (p <= 0) return;
-
-  const x0 = W * 0.22, y0 = H * 0.78;
-  const w = W * 0.56, h = H * 0.28;
-
-  // eje
-  ctx.save();
-  ctx.strokeStyle = "#B0BEC5";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(x0, y0);
-  ctx.lineTo(x0, y0 - h);
-  ctx.moveTo(x0, y0);
-  ctx.lineTo(x0 + w, y0);
-  ctx.stroke();
-  ctx.restore();
-
-  const bars = [0.35, 0.55, 0.7, 0.88]; // alturas objetivo
-  const bw = (w * 0.7) / bars.length;
-  const gap = (w * 0.3) / (bars.length + 1);
-
-  bars.forEach((target, i) => {
-    const x = x0 + gap * (i + 1) + bw * i;
-    const grow = easeInOut(p) * target;
-    const hBar = h * grow;
-
-    const col = ["#90CAF9", "#64B5F6", "#42A5F5", "#1E88E5"][i % 4];
-    ctx.fillStyle = col;
-    ctx.fillRect(x, y0 - hBar, bw, hBar);
-  });
-}
-
-function drawApplause(ctx: CanvasRenderingContext2D, W: number, H: number, t: number, easeOut: (x: number) => number) {
-  // 7–8s
-  const p = clamp01((t - 7) / 1);
-  if (p <= 0) return;
-
-  // confetti
-  const N = 20;
-  for (let i = 0; i < N; i++) {
-    const px = (i / N) * W + Math.sin(i * 17.23) * 20;
-    const py = H * 0.12 + easeOut(p) * (H * 0.5) + (Math.sin(i * 9.1) * 8);
-    const size = 6 + ((i * 13) % 6);
-    ctx.fillStyle = ["#FFEE58", "#F48FB1", "#80DEEA", "#A5D6A7", "#90CAF9"][i % 5];
-    ctx.fillRect(px, py, size, size);
-  }
-
-  // texto
-  ctx.save();
-  ctx.globalAlpha = p;
-  ctx.font = "900 28px Inter, ui-sans-serif";
-  ctx.fillStyle = "#1976D2";
-  ctx.textAlign = "center";
-  ctx.fillText("¡Excelente presentación!", W * 0.5, H * 0.2);
-  ctx.restore();
-}
-
-/* ---------- mini utils ---------- */
-function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
-}
-function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  const rr = Math.min(r, h / 2, w / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + rr, y);
-  ctx.arcTo(x + w, y, x + w, y + h, rr);
-  ctx.arcTo(x + w, y + h, x, y + h, rr);
-  ctx.arcTo(x, y + h, x, y, rr);
-  ctx.arcTo(x, y, x + w, y, rr);
-  ctx.closePath();
-}
-// ---- Faltaba esta función de easing ----
-function easeOut(t: number): number {
-  return 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 3);
 }

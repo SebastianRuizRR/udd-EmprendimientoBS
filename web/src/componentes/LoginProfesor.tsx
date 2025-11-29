@@ -24,85 +24,81 @@ const baseInput: React.CSSProperties = {
   boxSizing: "border-box",
   maxWidth: "100%",
   background: theme.blanco,
+  marginBottom: 10
 };
 
 export default function LoginProfesor({ onSuccess, onCancel }: Props) {
-  const [user, setUser] = useState("1");
-  const [pass, setPass] = useState("1");
+  const [user, setUser] = useState("");
+  const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
+
+  const handleLogin = () => {
+      if (!user || !pass) {
+          setErr("Completa todos los campos");
+          return;
+      }
+      // La validación real ocurre en App.tsx
+      onSuccess({ user, pass });
+  };
 
   return (
     <div
       style={{
-        width: "clamp(320px,92vw,520px)",
-        background: "rgba(255,255,255,0.96)",
+        width: "clamp(300px,90vw,480px)",
+        background: "rgba(255,255,255,0.98)",
         boxShadow: theme.shadow,
         border: `1px solid ${theme.border}`,
         borderRadius: 20,
-        padding: 24,
+        padding: 30,
         textAlign: "center",
-        backdropFilter: "blur(2px)",
         position: "relative",
         zIndex: 3,
         margin: "12px auto",
       }}
     >
-      <h2 style={{ margin: 0, marginBottom: 8, fontSize: 26, fontWeight: 900, color: theme.rosa }}>
-        Acceso Profesor
+      <h2 style={{ margin: "0 0 8px", fontSize: 24, fontWeight: 900, color: theme.rosa }}>
+        Acceso Docente
       </h2>
-      <p style={{ marginTop: 0, marginBottom: 16, color: theme.azul }}>Ingresa tus credenciales</p>
+      <p style={{ margin: "0 0 24px", color: theme.texto, opacity: 0.8 }}>Ingresa tus credenciales para gestionar la sala.</p>
 
-      <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
+      <div style={{ textAlign: "left" }}>
+        <label style={{fontSize:12, fontWeight:700, color:'#666', marginLeft:4}}>USUARIO</label>
         <input
-          placeholder="Usuario"
+          placeholder="ej: prof.garcia"
           value={user}
           onChange={(e) => setUser(e.target.value)}
           style={baseInput}
         />
+        
+        <label style={{fontSize:12, fontWeight:700, color:'#666', marginLeft:4}}>CONTRASEÑA</label>
         <input
-          placeholder="Contraseña"
+          placeholder="••••••"
           type="password"
           value={pass}
           onChange={(e) => setPass(e.target.value)}
           style={baseInput}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              if (user && pass) onSuccess({ user, pass });
-              else setErr("Completa usuario y contraseña");
-            }
-          }}
+          onKeyDown={(e) => e.key === "Enter" && handleLogin()}
         />
-        {err && <div style={{ color: "#D32F2F", fontWeight: 700, fontSize: 13 }}>{err}</div>}
+        
+        {err && <div style={{ color: "#D32F2F", fontWeight: 700, fontSize: 13, marginTop: 5, textAlign:'center' }}>{err}</div>}
 
-        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 6 }}>
+        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 24 }}>
           <button
             onClick={onCancel}
             style={{
-              padding: "12px 16px",
-              borderRadius: 14,
-              border: "none",
-              background: theme.amarillo,
-              color: theme.texto,
-              fontWeight: 800,
-              cursor: "pointer",
+              padding: "12px 20px", borderRadius: 14, border: "none",
+              background: theme.amarillo, color: theme.texto, fontWeight: 800, cursor: "pointer",
             }}
           >
             ⬅ Volver
           </button>
 
           <button
-            onClick={() => {
-              if (user && pass) onSuccess({ user, pass });
-              else setErr("Completa usuario y contraseña");
-            }}
+            onClick={handleLogin}
             style={{
-              padding: "12px 16px",
-              borderRadius: 14,
-              border: "none",
-              background: theme.azul,
-              color: theme.blanco,
-              fontWeight: 800,
-              cursor: "pointer",
+              padding: "12px 24px", borderRadius: 14, border: "none",
+              background: theme.azul, color: theme.blanco, fontWeight: 800, cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(25,118,210,.2)"
             }}
           >
             Ingresar

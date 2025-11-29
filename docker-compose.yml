@@ -1,4 +1,3 @@
-
 services:
   db:
     image: mysql:8.0
@@ -10,7 +9,7 @@ services:
       MYSQL_PASSWORD: apppass
       MYSQL_ROOT_PASSWORD: rootpass
     ports:
-      - "3306:3306"     # opcional exponer
+      - "3306:3306"
     volumes:
       - dbdata:/var/lib/mysql
     healthcheck:
@@ -30,15 +29,14 @@ services:
       PORT: "4000"
       NODE_ENV: "development"
     ports:
-      - "4000:4000"
+      - "4001:4000"
     volumes:
-      - ./server:/app
-      - /app/node_modules   # evita que el bind-mount tape node_modules del contenedor
-    command: sh -c "npx prisma migrate deploy || true && npm run dev"
+      - ./server/src:/app/src
+      - ./server/prisma:/app/prisma
+      - ./server/package.json:/app/package.json
+      - ./server/tsconfig.json:/app/tsconfig.json
+    command: sh -c "npx prisma migrate deploy || true && npx prisma generate && npm run dev"
 
 
-
-  # El front puedes correrlo fuera de Docker (vite) o en un contenedor aparte.
-  # Yo recomiendo correr Vite en la shell de Codespaces (puerto 3000).
 volumes:
   dbdata:

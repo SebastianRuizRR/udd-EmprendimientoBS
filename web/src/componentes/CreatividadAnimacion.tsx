@@ -1,13 +1,13 @@
 import React, { useEffect, useRef } from "react";
 
 /**
- * CreatividadAnimacion
- * Escenas (~12s total):
- *  1) (0–5s) Piezas caen y se ensamblan en un prototipo.
- *  2) (5–9s) Resaltamos/iteramos partes (idea mejorada).
- *  3) (9–12s) Aparece una bombilla que late (¡eureka!).
- * Si loop=true, reinicia; de lo contrario dispara onFinished al final.
+ * CreatividadAnimacion (Versión Profesional + Audio)
+ * 1. Plano (Diseño)
+ * 2. Construcción (Bloques con sonido pop)
+ * 3. Escáner (Sonido tecnológico)
+ * 4. Validación (Tarjeta limpia con sonido de éxito)
  */
+
 type Props = {
   loop?: boolean;
   onFinished?: () => void;
@@ -17,6 +17,73 @@ export default function CreatividadAnimacion({ loop = true, onFinished }: Props)
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const startRef = useRef<number>(0);
+  
+  // Refs para controlar que los sonidos suenen solo una vez por ciclo
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const playedBlocksRef = useRef<Set<number>>(new Set());
+  const playedScanRef = useRef(false);
+  const playedWinRef = useRef(false);
+
+  // --- SISTEMA DE SONIDO SINTETIZADO ---
+  const initAudio = () => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  };
+
+  const playPop = () => {
+    const ctx = initAudio();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    // Sonido corto tipo madera/plástico
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(300 + Math.random() * 100, ctx.currentTime);
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.1);
+  };
+
+  const playScan = () => {
+    const ctx = initAudio();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    // Barrido futurista
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(200, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(800, ctx.currentTime + 1.5);
+    gain.gain.setValueAtTime(0.05, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 1.5);
+    osc.start();
+    osc.stop(ctx.currentTime + 1.5);
+  };
+
+  const playSuccess = () => {
+    const ctx = initAudio();
+    // Acorde mayor simple (Ding!)
+    [523.25, 659.25, 783.99].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        const now = ctx.currentTime + (i * 0.05);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.1, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+        osc.start(now);
+        osc.stop(now + 1.5);
+    });
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -24,206 +91,242 @@ export default function CreatividadAnimacion({ loop = true, onFinished }: Props)
     let dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
     const resize = () => {
-      const w = canvas.clientWidth || 900;
-      const h = Math.max(280, Math.round((w * 9) / 16));
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
-      canvas.style.height = `${h}px`;
-      canvas.style.width = "100%";
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const parent = canvas.parentElement;
+      if (parent) {
+        const w = parent.clientWidth;
+        const h = Math.max(280, Math.round((w * 9) / 16));
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+        canvas.style.width = "100%";
+        canvas.style.height = `${h}px`;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
     };
     resize();
     const ro = new ResizeObserver(resize);
-    ro.observe(canvas);
+    if(canvas.parentElement) ro.observe(canvas.parentElement);
 
-    const DUR = 12; // segundos
-    const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v));
-    const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-    const ease = (t: number) => 1 - Math.pow(1 - clamp(t), 3);
-    const easeInOut = (t: number) =>
-      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    // --- CONFIG ---
+    const COLS = 3;
+    const ROWS = 3;
+    const BLOCK_SIZE = 50;
+    const GAP = 6;
+    const PALETTE = ["#1976D2", "#42A5F5", "#E91E63", "#FFC107", "#AB47BC"];
 
-    const P = (x: number, y: number) => ({
-      x: (x * canvas.width) / dpr,
-      y: (y * canvas.height) / dpr,
-    });
-
-    function drawBG() {
-      const w = canvas.width / dpr, h = canvas.height / dpr;
-      const g = ctx.createLinearGradient(0, 0, 0, h);
-      g.addColorStop(0, "#F1F8E9"); // verde muy suave
-      g.addColorStop(1, "#FFFFFF");
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, w, h);
-
-      // “mesa” o base
-      ctx.fillStyle = "#E8F5E9";
-      const mw = Math.min(560, w * 0.62);
-      ctx.fillRect(w * 0.5 - mw / 2, h * 0.68, mw, 10);
-      ctx.fillStyle = "#C8E6C9";
-      ctx.fillRect(w * 0.5 - mw / 2, h * 0.68 + 10, mw, 4);
+    const blocks: {id:number, r:number, c:number, color:string, delay:number}[] = [];
+    let count = 0;
+    for(let r=0; r<ROWS; r++){
+        for(let c=0; c<COLS; c++){
+            blocks.push({
+                id: count++,
+                r, c,
+                color: PALETTE[(r+c) % PALETTE.length],
+                delay: 3 + (c * 0.2 + (ROWS - r) * 0.3) 
+            });
+        }
     }
 
-    type Piece = {
-      color: string;
-      size: number; // lado del rectángulo
-      from: { x: number; y: number };
-      to: { x: number; y: number; rot?: number };
-      delay: number; // 0..1 relativo a escena 1
-      rot?: number;
-      r?: number; // para piezas redondas
-      type?: "rect" | "round";
+    const clamp = (v: number, a=0, b=1) => Math.max(a, Math.min(b, v));
+    const easeOutElastic = (t: number) => {
+        const c4 = (2 * Math.PI) / 3;
+        return t === 0 ? 0 : t === 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+    };
+    const easeInOutQuad = (t: number) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+    const drawGrid = (w: number, h: number, opacity: number) => {
+        if(opacity <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = opacity * 0.15;
+        ctx.strokeStyle = "#1976D2";
+        ctx.beginPath();
+        const step = 40;
+        for (let x = 0; x <= w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+        for (let y = 0; y <= h; y += step) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+        ctx.stroke();
+        ctx.restore();
     };
 
-    // Posiciones finales del “prototipo” (to: 0..1 coordenadas relativas)
-    const pieces: Piece[] = [
-      { color: "#90CAF9", size: 80, from: P(0.15, -0.2), to: P(0.43, 0.60), delay: 0.00, rot: 0.02, type: "rect" },
-      { color: "#F48FB1", size: 90, from: P(0.85, -0.2), to: P(0.55, 0.60), delay: 0.08, rot: -0.03, type: "rect" },
-      { color: "#FFF59D", size: 56, from: P(0.30, -0.3), to: P(0.50, 0.50), delay: 0.18, type: "round", r: 28 },
-      { color: "#A5D6A7", size: 70, from: P(0.70, -0.35), to: P(0.50, 0.68), delay: 0.26, rot: 0.12, type: "rect" },
-      { color: "#CE93D8", size: 60, from: P(0.10, -0.4), to: P(0.62, 0.52), delay: 0.34, rot: 0.18, type: "rect" },
-    ];
-
-    function drawPiece(p: Piece, x: number, y: number, t: number) {
-      const wob = Math.sin(t * 6) * 2; // leve respiración
-      ctx.save();
-      ctx.translate(x, y + wob);
-      ctx.rotate(p.rot || 0);
-      ctx.fillStyle = p.color;
-      if (p.type === "round") {
-        const r = (p.r || p.size / 2);
-        // sombra
-        ctx.fillStyle = "rgba(0,0,0,0.10)";
-        ctx.beginPath();
-        ctx.ellipse(0, p.size / 2 + 8, r * 0.9, 8, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        // sombra
-        ctx.fillStyle = "rgba(0,0,0,0.10)";
-        ctx.beginPath();
-        ctx.ellipse(0, p.size / 2 + 10, p.size * 0.42, 10, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = p.color;
-        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
-        // conectores (puntitos tipo LEGO)
-        ctx.fillStyle = "rgba(255,255,255,0.7)";
-        const dots = 3;
-        const step = p.size / (dots + 1);
-        for (let i = 1; i <= dots; i++) {
-          for (let j = 1; j <= dots; j++) {
-            ctx.beginPath();
-            ctx.arc(-p.size / 2 + step * i, -p.size / 2 + step * j, 3, 0, Math.PI * 2);
-            ctx.fill();
-          }
+    const drawBlueprint = (cx: number, cy: number, progress: number) => {
+        if(progress <= 0) return;
+        ctx.save();
+        ctx.translate(cx, cy);
+        const totalW = COLS * BLOCK_SIZE + (COLS-1)*GAP;
+        const totalH = ROWS * BLOCK_SIZE + (ROWS-1)*GAP;
+        ctx.strokeStyle = "#1976D2";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 6]);
+        const perim = 2 * (totalW + totalH);
+        ctx.lineDashOffset = -perim * progress;
+        ctx.strokeRect(-totalW/2 - 5, -totalH/2 - 5, totalW + 10, totalH + 10);
+        
+        if(progress > 0.5) {
+            ctx.globalAlpha = (progress - 0.5) * 2;
+            ctx.fillStyle = "#1976D2";
+            ctx.font = "700 12px Inter, sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("1. IDEAR", 0, -totalH/2 - 15);
         }
-      }
-      ctx.restore();
-    }
+        ctx.restore();
+    };
 
-    function drawHighlightRing(x: number, y: number, r: number, alpha: number) {
-      ctx.save();
-      ctx.strokeStyle = `rgba(25,118,210,${alpha})`;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
+    const drawBlocks = (cx: number, cy: number, t: number) => {
+        const totalW = COLS * BLOCK_SIZE + (COLS-1)*GAP;
+        const totalH = ROWS * BLOCK_SIZE + (ROWS-1)*GAP;
+        const x0 = cx - totalW / 2;
+        const y0 = cy - totalH / 2;
 
-    function drawBulb(x: number, y: number, t: number) {
-      const pulse = 0.85 + Math.sin(t * 4) * 0.15;
-      ctx.save();
-      ctx.translate(x, y);
-      // halo
-      ctx.globalAlpha = 0.20 * pulse;
-      ctx.fillStyle = "#FFEB3B";
-      ctx.beginPath();
-      ctx.arc(0, -20, 72 * pulse, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
+        blocks.forEach(b => {
+            const localT = t - b.delay; 
+            if(localT < 0) return;
 
-      // bombilla
-      ctx.fillStyle = "#FFEB3B";
-      ctx.beginPath();
-      ctx.ellipse(0, -22, 30, 36, 0, 0, Math.PI * 2);
-      ctx.fill();
+            // Trigger Sound
+            if (localT > 0 && localT < 0.1 && !playedBlocksRef.current.has(b.id)) {
+                playPop();
+                playedBlocksRef.current.add(b.id);
+            }
 
-      // casquillo
-      ctx.fillStyle = "#607D8B";
-      ctx.fillRect(-16, 6, 32, 10);
+            const progress = clamp(localT / 1.2);
+            const eased = easeOutElastic(progress);
+            const targetX = x0 + b.c * (BLOCK_SIZE + GAP);
+            const currentY = -150 + (y0 + b.r * (BLOCK_SIZE + GAP) + 150) * eased;
+            
+            ctx.save();
+            ctx.fillStyle = b.color;
+            ctx.shadowColor = "rgba(0,0,0,0.15)";
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetY = 4;
+            ctx.beginPath();
+            ctx.roundRect(targetX, currentY, BLOCK_SIZE, BLOCK_SIZE, 6);
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.2)"; // Brillo
+            ctx.fillRect(targetX, currentY, BLOCK_SIZE, BLOCK_SIZE/3);
+            ctx.restore();
+        });
 
-      // rayos
-      ctx.strokeStyle = "#FFC107";
-      ctx.lineWidth = 3;
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2;
-        ctx.beginPath();
-        ctx.moveTo(Math.cos(a) * 42, -22 + Math.sin(a) * 42);
-        ctx.lineTo(Math.cos(a) * (52 + 4 * pulse), -22 + Math.sin(a) * (52 + 4 * pulse));
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
+        if(t > 3.5 && t < 8) {
+            ctx.fillStyle = "#333";
+            ctx.font = "700 12px Inter, sans-serif";
+            ctx.textAlign = "center";
+            ctx.globalAlpha = clamp((t - 3.5));
+            ctx.fillText("2. CONSTRUIR", cx, y0 + totalH + 25);
+        }
+    };
+
+    const drawScanner = (cx: number, cy: number, t: number) => {
+        if(t < 8) return;
+        const localT = t - 8;
+        
+        // Trigger Scan Sound
+        if (localT > 0 && localT < 0.1 && !playedScanRef.current) {
+            playScan();
+            playedScanRef.current = true;
+        }
+
+        const scanProgress = clamp(localT / 2);
+        const easeScan = easeInOutQuad(scanProgress);
+        const totalH = ROWS * BLOCK_SIZE + (ROWS-1)*GAP + 20;
+        const yStart = cy - totalH/2 - 20;
+        const yEnd = cy + totalH/2 + 20;
+        const currentScanY = yStart + (yEnd - yStart) * easeScan;
+
+        if (scanProgress < 1) {
+            ctx.save();
+            ctx.strokeStyle = "#00C853";
+            ctx.lineWidth = 3;
+            ctx.shadowColor = "#00C853";
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.moveTo(cx - 100, currentScanY);
+            ctx.lineTo(cx + 100, currentScanY);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // --- VALIDATION BADGE (Tarjeta flotante corregida) ---
+        if(localT > 2.2) {
+            // Trigger Win Sound
+            if (!playedWinRef.current) {
+                playSuccess();
+                playedWinRef.current = true;
+            }
+
+            const appear = clamp((localT - 2.2) * 3); // Aparece rápido
+            const scale = easeOutElastic(appear);
+            
+            ctx.save();
+            ctx.translate(cx, cy + 20); // Bajamos un poco el badge para que no tape los bloques
+            ctx.scale(scale, scale);
+
+            // Fondo Tarjeta (Blanco sólido para tapar lo de atrás)
+            ctx.shadowColor = "rgba(0,0,0,0.2)";
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetY = 10;
+            ctx.fillStyle = "#FFFFFF";
+            
+            // Dibujar rectángulo redondeado centrado
+            const badgeW = 160;
+            const badgeH = 140;
+            ctx.beginPath();
+            ctx.roundRect(-badgeW/2, -badgeH/2, badgeW, badgeH, 16);
+            ctx.fill();
+
+            // Círculo Verde
+            ctx.fillStyle = "#E8F5E9";
+            ctx.beginPath();
+            ctx.arc(0, -15, 35, 0, Math.PI*2);
+            ctx.fill();
+
+            // Checkmark
+            ctx.fillStyle = "#2E7D32";
+            ctx.font = "900 36px Inter, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("✓", 0, -13);
+
+            // Textos
+            ctx.fillStyle = "#1B5E20";
+            ctx.font = "800 16px Inter, sans-serif";
+            ctx.fillText("¡VALIDADO!", 0, 35);
+            
+            ctx.fillStyle = "#666";
+            ctx.font = "500 11px Inter, sans-serif";
+            ctx.fillText("Prototipo listo", 0, 52);
+
+            ctx.restore();
+        }
+    };
 
     const loopFn = (now: number) => {
       if (!startRef.current) startRef.current = now;
       const tSec = (now - startRef.current) / 1000;
+      const DUR = 12;
       const mod = loop ? tSec % DUR : Math.min(tSec, DUR);
 
-      drawBG();
-
-      // ESCENA 1 — caída/ensamble (0–5s)
-      const s1 = clamp(mod / 5);
-      pieces.forEach((p) => {
-        // progreso individual con delay
-        const tt = clamp((s1 - p.delay) / 0.55);
-        const x = lerp(p.from.x, p.to.x, ease(tt));
-        const y = lerp(p.from.y, p.to.y, ease(tt));
-        // rotación sutil durante caída
-        p.rot = (p.rot || 0) + (1 - tt) * 0.02;
-        drawPiece(p, x, y, tSec);
-      });
-
-      // ESCENA 2 — resaltar/iterar (5–9s)
-      const s2 = clamp((mod - 5) / 4);
-      if (s2 > 0) {
-        const center = P(0.50, 0.56);
-        // “sketch” de conexión para sugerir iteración
-        ctx.save();
-        ctx.strokeStyle = "rgba(25,118,210,0.6)";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([8, 6]);
-        ctx.beginPath();
-        ctx.moveTo(center.x - 120, center.y - 60);
-        ctx.lineTo(center.x + 120, center.y + 20);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(center.x + 120, center.y - 40);
-        ctx.lineTo(center.x - 100, center.y + 30);
-        ctx.stroke();
-        ctx.restore();
-
-        // anillos que van apareciendo sobre piezas
-        pieces.forEach((p, i) => {
-          const px = p.to.x, py = p.to.y;
-          const appear = ease(clamp(s2 * 1.2 - i * 0.12));
-          if (appear > 0) drawHighlightRing(px, py, 50, appear);
-        });
+      // Reset sounds on loop
+      if (tSec > DUR && loop && playedWinRef.current && mod < 1) {
+          playedBlocksRef.current.clear();
+          playedScanRef.current = false;
+          playedWinRef.current = false;
       }
 
-      // ESCENA 3 — bombilla (9–12s)
-      const s3 = clamp((mod - 9) / 3);
-      if (s3 > 0) {
-        const b = P(0.80, 0.28);
-        drawBulb(b.x, b.y, tSec);
-      }
+      const w = canvas.width / dpr;
+      const h = canvas.height / dpr;
+      
+      const grad = ctx.createLinearGradient(0,0,0,h);
+      grad.addColorStop(0, "#F5F7FA");
+      grad.addColorStop(1, "#FFFFFF");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
 
-      if (!loop && mod >= DUR - 0.001) {
+      drawGrid(w, h, 1);
+      const cx = w / 2;
+      const cy = h / 2;
+
+      drawBlueprint(cx, cy, clamp(mod / 2.5));
+      drawBlocks(cx, cy, mod);
+      drawScanner(cx, cy, mod);
+
+      if (!loop && mod >= DUR - 0.05) {
         onFinished?.();
         return;
       }
@@ -233,43 +336,19 @@ export default function CreatividadAnimacion({ loop = true, onFinished }: Props)
     rafRef.current = requestAnimationFrame(loopFn);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      ro.disconnect();
+      if(canvas.parentElement) ro.unobserve(canvas.parentElement);
     };
   }, [loop, onFinished]);
 
   return (
-    <div
-      style={{
-        width: "clamp(320px, 92vw, 900px)",
-        margin: "0 auto",
-        background: "#fff",
-        border: "1px solid #E3E8EF",
-        borderRadius: 20,
-        boxShadow: "0 16px 36px rgba(16,24,40,.14)",
-        padding: 20,
-        textAlign: "center",
-      }}
-    >
-      <h2 style={{ margin: 0, marginBottom: 8, fontSize: 26, fontWeight: 900, color: "#1976D2" }}>
-        Creatividad y Prototipado
-      </h2>
-      <p style={{ marginTop: 0, color: "#0D47A1" }}>
-        Probamos piezas, iteramos y ¡encendemos la idea!
+    <div style={{ width: "clamp(320px, 92vw, 900px)", margin: "0 auto", background: "#fff", border: "1px solid #E3E8EF", borderRadius: 20, boxShadow: "0 16px 36px rgba(16,24,40,.14)", padding: 20, textAlign: "center" }}>
+      <h2 style={{ margin: 0, marginBottom: 8, fontSize: 26, fontWeight: 900, color: "#1976D2" }}>Prototipar para Validar</h2>
+      <p style={{ marginTop: 0, color: "#0D47A1", fontSize: 15, lineHeight: 1.5, maxWidth: 600, margin: "0 auto 16px auto" }}>
+        No basta con tener la idea. Hay que <b>construirla rápido</b> para ver si funciona.
       </p>
-      <div
-        style={{
-          position: "relative",
-          width: "100%",
-          aspectRatio: "16/9",
-          borderRadius: 16,
-          border: "2px dashed #E3E8EF",
-          overflow: "hidden",
-          background: "linear-gradient(180deg,#F1F8E9, #FFFFFF)",
-        }}
-      >
+      <div style={{ position: "relative", width: "100%", aspectRatio: "16/9", borderRadius: 16, border: "1px solid #E3E8EF", overflow: "hidden", background: "#F5F7FA" }}>
         <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />
       </div>
     </div>
   );
 }
-
