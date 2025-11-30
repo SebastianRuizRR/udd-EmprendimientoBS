@@ -8,9 +8,10 @@ const prisma = new PrismaClient();
 const app = express();
 
 app.use(cors({
-    origin: [
-      /.*\.app\.github\.dev$/,   // Codespaces
-      "http://localhost:5173",   // Local Vite
+ origin: [
+      /.*\.app\.github\.dev$/, 
+      "http://localhost:5173", 
+      "https://udd-emprendimiento.netlify.app", // 👈 NUEVO: El dominio de tu frontend
     ],
     credentials: true,
 }));
@@ -18,7 +19,7 @@ app.use(cors({
 app.use(express.json());
 
 app.get("/health", (_req, res) => {
-  res.status(200).json({ ok: true, t: Date.now(), db: "connected" });
+  res.status(200).json({ ok: true, t: Date.now(), db: "connected" });
 });
 
 // Registrar rutas
@@ -27,5 +28,5 @@ app.use("/salas", salasRouter(prisma));
 
 const PUERTO = Number(process.env.PORT || 4000);
 app.listen(PUERTO, () => {
-  console.log(`🚀 API lista en puerto :${PUERTO}`);
+  console.log(`🚀 API lista en puerto :${PUERTO}`);
 });
