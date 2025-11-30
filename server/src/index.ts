@@ -8,10 +8,10 @@ const prisma = new PrismaClient();
 const app = express();
 
 app.use(cors({
- origin: [
+    origin: [
       /.*\.app\.github\.dev$/, 
       "http://localhost:5173", 
-      "https://udd-emprendimiento.netlify.app", // 👈 NUEVO: El dominio de tu frontend
+      "https://udd-emprendimiento.netlify.app", 
     ],
     credentials: true,
 }));

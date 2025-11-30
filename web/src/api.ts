@@ -35,11 +35,14 @@ export function generateCode(len = 5): string {
 export async function createRoom(
   payload: { hostName: string },
   auth?: ProfAuth
-): Promise<{ roomCode: string }> {
-  // El backend genera el código, pero enviamos el hostName
-  return request<{ roomCode: string }>("/salas", "POST", {
+): Promise<{ roomCode: string }> { 
+  
+  const res = await request<{ codigoSala: string }>("/salas", "POST", {
     anfitrion: payload.hostName, 
   });
+  return { 
+    roomCode: res.codigoSala 
+  };
 }
 
 export async function joinRoom(
