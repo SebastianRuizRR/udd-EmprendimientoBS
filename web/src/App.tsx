@@ -29,8 +29,8 @@ import { FlowState, ESTADO_INICIAL, FlowStep, TITULOS_PASOS } from "./componente
 // Importaciones de archivos estáticos (ajusta las rutas según tu estructura)
 import originalImg from "./componentes/assets/original.jpg";
 import modificadaImg from "./componentes/assets/modificada.jpg";
+// src/App.tsx:32
 import imgQR from "./componentes/assets/QR.jpg";
-
 /* ============ UTILES CORE ============ */
 
 function mmss(sec: number): string {

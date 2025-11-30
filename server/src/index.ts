@@ -1,31 +1,31 @@
 import express from "express";
-
 import cors from "cors";
 import { PrismaClient } from "@prisma/client";
 import salasRouter from "./routes/salas.js";
+import authRouter from "./routes/auth.js";
 
 const prisma = new PrismaClient();
 const app = express();
 
-app.use(
-  cors({
+app.use(cors({
     origin: [
       /.*\.app\.github\.dev$/,   // Codespaces
-      "http://localhost:5173",   // por si pruebas local
+      "http://localhost:5173",   // Local Vite
     ],
     credentials: true,
-  })
-);app.use(express.json());
+}));
 
-// Salud del servicio (en español)
+app.use(express.json());
+
 app.get("/health", (_req, res) => {
-  res.status(200).json({ ok: true, t: Date.now() });
+  res.status(200).json({ ok: true, t: Date.now(), db: "connected" });
 });
 
-// Rutas de salas/equipos/integrantes
+// Registrar rutas
+app.use("/auth", authRouter(prisma));
 app.use("/salas", salasRouter(prisma));
 
 const PUERTO = Number(process.env.PORT || 4000);
 app.listen(PUERTO, () => {
-  console.log(`API escuchando en :${PUERTO}`);
+  console.log(`🚀 API lista en puerto :${PUERTO}`);
 });

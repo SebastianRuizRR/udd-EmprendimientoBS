@@ -1,55 +1,220 @@
-// ===== PRISMA CONFIG =====
+// server/prisma/schema.prisma
+
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "linux-musl"]
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
-  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")   // 👈 agrega esto
-
+  // NOTA: Cambia a "mysql" o "postgresql" para producción.
+  // Mantenemos "sqlite" para desarrollo local.
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
+// ==========================================
+// 1. USUARIOS Y AUTENTICACIÓN (Admin/Profesor)
+// ==========================================
 
-// ============== MODELOS ==============
+model Usuario {
+  id        Int      @id @default(autoincrement())
+  nombre    String
+  username  String   @unique // Login
+  password  String   // Hash
+  esAdmin   Boolean  @default(false)
+  creadoEn  DateTime @default(now())
+
+  // Un profesor puede tener múltiples sesiones históricas
+  salasCreadas Sala[] @relation("ProfesorSalas")
+
+  @@map("usuarios")
+}
+
+// ==========================================
+// 2. SESIÓN DE JUEGO (La "Sala")
+// ==========================================
 
 model Sala {
   id        Int      @id @default(autoincrement())
-  codigo    String   @unique
-  anfitrion String // ⬅️ NUEVO: lo usas en POST /salas
-  creadaEn  DateTime @default(now())
+  codigo    String   @unique // Código único de la sesión (ej: "XJ9Z2")
+  
+  // Relación: Quién inició esta sesión
+  anfitrionId Int
+  anfitrion   Usuario @relation("ProfesorSalas", fields: [anfitrionId], references: [id])
 
-  // LADO OPUESTO de Equipo.sala
-  equipos Equipo[] @relation("SalaEquipos")
+  // --- FECHA Y ESTADO DE LA SESIÓN ---
+  creadaEn    DateTime @default(now()) // <--- AQUÍ ESTÁ LA FECHA DE LA SESIÓN
+  estado      String   @default("ACTIVA") // "ACTIVA", "FINALIZADA"
+
+  // --- ESTADO EN TIEMPO REAL (Sync) ---
+  faseActual      String  @default("lobby")
+  timerCorriendo  Boolean @default(false)
+  segundosRestantes Int   @default(0)
+  
+  // --- CONFIGURACIÓN DE TIEMPOS (Snapshot para esta sesión) ---
+  t_rompehielo   Int @default(180)
+  t_diferencias  Int @default(300)
+  t_empatia      Int @default(300)
+  t_creatividad  Int @default(900)
+  t_pitch_prep   Int @default(600)
+  t_pitch_fuego  Int @default(90)
+
+  // Relaciones: Todo lo que ocurre DENTRO de esta sesión
+  equipos Equipo[]        @relation("SalaEquipos")
+  eventos EventoAnalitica[] // Logs de lo que pasó en esta fecha
 
   @@map("salas")
 }
 
+// ==========================================
+// 3. JUGADORES (Equipos y Alumnos)
+// ==========================================
+
 model Equipo {
-  id     Int    @id @default(autoincrement())
-  nombre String @map("nombre")
+  id       Int    @id @default(autoincrement())
+  nombre   String
+  
+  // Pertenencia a una sesión específica
+  salaId   Int
+  sala     Sala   @relation("SalaEquipos", fields: [salaId], references: [id], onDelete: Cascade)
 
-  // FK a Sala
-  salaId Int  @map("sala_id")
-  sala   Sala @relation("SalaEquipos", fields: [salaId], references: [id])
+  // --- PROGRESO Y DATOS DEL JUEGO ---
+  puntos      Int     @default(0)
+  
+  // Fase 2: Elección y Trabajo
+  desafioId   Int?    
+  desafio     Desafio? @relation(fields: [desafioId], references: [id])
+  mapaEmpatia String?  // JSON stringificado con las respuestas del Bubble Map
 
-  // relación con Integrantes
-  integrantes Integrante[] @relation("EquipoIntegrantes")
+  // Fase 3: Construcción
+  fotoLegoUrl String? 
+  
+  // Fase 4: Feedback
+  feedbackData String? // JSON resumen
 
-  // ⬅️ Único compuesto para permitir where: { salaId_nombre: { ... } }
-  @@unique([salaId, nombre], name: "salaId_nombre")
+  // Relaciones
+  integrantes           Integrante[]
+  evaluacionesHechas    Evaluacion[] @relation("EvaluacionOrigen")
+  evaluacionesRecibidas Evaluacion[] @relation("EvaluacionDestino")
+  reflexiones           Reflexion[]
+  eventos               EventoAnalitica[]
+
+  @@unique([salaId, nombre]) // No nombres duplicados en la misma sesión
   @@map("equipos")
 }
 
 model Integrante {
-  id      Int     @id @default(autoincrement())
-  nombre  String
-  carrera String? @map("carrera") // ⬅️ NUEVO: opcional, lo envías en /unirse
+  id       Int     @id @default(autoincrement())
+  nombre   String
+  carrera  String?
 
-  // FK a Equipo
-  equipoId Int    @map("equipo_id")
-  equipo   Equipo @relation("EquipoIntegrantes", fields: [equipoId], references: [id])
+  equipoId Int
+  equipo   Equipo @relation(fields: [equipoId], references: [id], onDelete: Cascade)
 
   @@map("integrantes")
+}
+
+// ==========================================
+// 4. DATOS GENERADOS (Resultados)
+// ==========================================
+
+// Votos entre equipos (Fase 4)
+model Evaluacion {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+
+  origenId    Int
+  origen      Equipo   @relation("EvaluacionOrigen", fields: [origenId], references: [id], onDelete: Cascade)
+  
+  destinoId   Int
+  destino     Equipo   @relation("EvaluacionDestino", fields: [destinoId], references: [id], onDelete: Cascade)
+
+  puntaje     Int      // Total calculado
+  detalleJson String   // JSON con el desglose de sliders
+  comentario  String?
+
+  @@map("evaluaciones")
+}
+
+// Cierre del juego (Fase 5)
+model Reflexion {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  equipoId  Int
+  equipo    Equipo   @relation(fields: [equipoId], references: [id], onDelete: Cascade)
+
+  texto     String   // JSON o texto con "Qué aprendí", "Qué costó"
+
+  @@map("reflexiones")
+}
+
+// Logs para el Dashboard de Admin
+model EventoAnalitica {
+  id        Int      @id @default(autoincrement())
+  timestamp DateTime @default(now())
+
+  tipo      String   // "start_phase", "upload_photo", "interaction"
+  fase      String?
+  detalle   String?  // JSON extra
+
+  salaId    Int
+  sala      Sala     @relation(fields: [salaId], references: [id], onDelete: Cascade)
+
+  equipoId  Int?     
+  equipo    Equipo?  @relation(fields: [equipoId], references: [id], onDelete: SetNull)
+
+  @@index([tipo, timestamp])
+  @@map("eventos_analitica")
+}
+
+// ==========================================
+// 5. CMS & CONFIGURACIÓN (Estático/Global)
+// ==========================================
+
+model Tema {
+  id            String    @id // "salud", "educacion"
+  label         String
+  personaNombre String?
+  personaBio    String?
+  personaImg    String?
+
+  desafios Desafio[]
+
+  @@map("temas")
+}
+
+model Desafio {
+  id          Int    @id @default(autoincrement())
+  titulo      String
+  descripcion String
+  imgUrl      String?
+
+  temaId      String
+  tema        Tema   @relation(fields: [temaId], references: [id], onDelete: Cascade)
+  
+  equipos     Equipo[]
+
+  @@map("desafios")
+}
+
+model OpcionRuleta {
+  id          Int     @id @default(autoincrement())
+  label       String
+  descripcion String
+  tipo        String
+  delta       Int
+  peso        Int
+  color       String?
+
+  @@map("config_ruleta")
+}
+
+model ItemChecklist {
+  id       Int     @id @default(autoincrement())
+  label    String
+  valor    Int
+  esFijo   Boolean @default(false)
+
+  @@map("config_checklist")
 }

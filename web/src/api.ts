@@ -1,9 +1,6 @@
-// src/api.ts
+// Define URL del Backend (Puerto 4000)
+export const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
-// 1. Defino la URL base (necesaria para el error de importación en App.tsx)
-export const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
-
-// 2. Actualizo el tipo para incluir id y name (necesario para el error en App.tsx)
 export type ProfAuth = { 
   user: string; 
   pass: string;
@@ -11,33 +8,21 @@ export type ProfAuth = {
   name?: string;
 };
 
-// --- AUTENTICACIÓN PROFESOR ---
-const PROF_KEY = "udd_prof_auth_v1";
-
-// --- HELPERS LOCALSTORAGE ---
-const readJSON = <T,>(key: string, fallback: T): T => {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
+// --- HELPER FETCH ---
+async function request<T>(endpoint: string, method: string, body?: any): Promise<T> {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  const response = await fetch(`${API}${endpoint}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Error ${response.status}`);
   }
-};
+  return response.json();
+}
 
-const writeJSON = (key: string, value: any): void => {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (e) {
-    console.error("Error writing to localStorage", e);
-  }
-};
-
-// --- ROOMS DB ---
-const ROOMS_KEY = "udd_rooms_v1";
-
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-// 3. Exporto esta función (necesario para el error en App.tsx)
 export function generateCode(len = 5): string {
   const CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out = "";
@@ -45,53 +30,59 @@ export function generateCode(len = 5): string {
   return out;
 }
 
-// --- API SIMULADA ---
+// --- ENDPOINTS ---
+
 export async function createRoom(
   payload: { hostName: string },
   auth?: ProfAuth
 ): Promise<{ roomCode: string }> {
-  await delay(200);
-  const code = generateCode();
-  const db = readJSON<Record<string, { hostName: string }>>(ROOMS_KEY, {});
-  db[code] = { hostName: payload.hostName || "Host" };
-  writeJSON(ROOMS_KEY, db);
-  return { roomCode: code };
+  // El backend genera el código, pero enviamos el hostName
+  return request<{ roomCode: string }>("/salas", "POST", {
+    anfitrion: payload.hostName, 
+  });
 }
 
 export async function joinRoom(
   roomCode: string,
   student: { name: string; career?: string }
-): Promise<{ ok: true }> {
-  await delay(150);
-  const db = readJSON<Record<string, { hostName: string }>>(ROOMS_KEY, {});
-  if (!db[roomCode]) throw new Error("Room not found (stub)");
-  return { ok: true };
+): Promise<{ ok: true; equipoId?: number; integranteId?: number }> {
+  return request(`/salas/${roomCode}/unirse`, "POST", {
+    nombre: student.name,
+    carrera: student.career
+  });
 }
 
-export async function health(): Promise<{ ok: true }> {
-  return { ok: true };
+export async function health(): Promise<{ ok: boolean; t: number }> {
+  return request<{ ok: boolean; t: number }>("/health", "GET");
 }
 
-// --- LÓGICA DE AUTENTICACIÓN LOCAL ---
-// (Mantenemos esto aparte del tipo ProfAuth de arriba)
+// --- AUTH LOCAL (Para compatibilidad UI) ---
+const PROF_KEY = "udd_prof_auth_v1";
+
 export const ProfAuthLogic = {
   login: (email: string, pass: string): boolean => {
-    if (email === "1" && pass === "1") {
-      writeJSON(PROF_KEY, { email, loggedAt: Date.now() });
+    // Aquí podrías llamar a /auth/login si quieres validación real en el futuro
+    if ((email === "prof" && pass === "prof") || (email === "admin" && pass === "admin")) {
+      try {
+        localStorage.setItem(PROF_KEY, JSON.stringify({ email, loggedAt: Date.now() }));
+      } catch {}
       return true;
     }
     return false;
   },
-
   isLoggedIn: (): boolean => {
-    const data = readJSON<{ email: string } | null>(PROF_KEY, null);
-    return !!data?.email;
+    try {
+      const raw = localStorage.getItem(PROF_KEY);
+      const data = raw ? JSON.parse(raw) : null;
+      return !!data?.email;
+    } catch { return false; }
   },
-
   getUser: (): string | null => {
-    const data = readJSON<{ email: string } | null>(PROF_KEY, null);
-    return data?.email || null;
+    try {
+      const raw = localStorage.getItem(PROF_KEY);
+      const data = raw ? JSON.parse(raw) : null;
+      return data?.email || null;
+    } catch { return null; }
   },
-
   logout: () => localStorage.removeItem(PROF_KEY),
 };
