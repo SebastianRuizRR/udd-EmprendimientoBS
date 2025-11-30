@@ -2616,26 +2616,26 @@ const saveChecklistConfig = (items: any[]) => {
     return tip;
   }
 
-  useEffect(() => {
-    if (mode === "alumno" && activeRoom && groupName) {
-      
-      const equiposValidos = getTeamsForRoom(analytics, activeRoom);
-      
-      const miGrupoExiste = equiposValidos.includes(groupName);
-
-      if (!miGrupoExiste) {
-        setTeamReady(false); 
-        setGroupName("");    
-        setMiNombre("");     
-        setMiCarrera("");
+useEffect(() => {
+    if (mode === "alumno" && activeRoom && groupName) { 
         
-        // Aviso al usuario
-        alert("⚠️ El profesor ha reiniciado los grupos de la sala. Por favor selecciona tu equipo nuevamente.");
-      }
+        const equiposValidos = getTeamsForRoom(analytics, activeRoom);
+        const miGrupoExiste = equiposValidos.includes(groupName);
+
+        if (!miGrupoExiste) {
+            setGroupName("");    
+            setTeamReady(false); // Ya no están listos
+            setMiNombre("");     
+            setMiCarrera("");
+            
+            if (teamReady) { 
+                alert("⚠️ El profesor ha reiniciado los grupos de la sala. Por favor selecciona tu equipo nuevamente.");
+            }
+        }
     }
-  }, [analytics, activeRoom, groupName, mode]);
-  // === Mini-animación (latido) ===
-  const pulseKeyframes = `
+}, [analytics, activeRoom, groupName, mode, teamReady]);
+
+const pulseKeyframes = `
 @keyframes pulse {
   0% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.04); opacity: .95; }
