@@ -118,19 +118,24 @@ const WizardPreSala: React.FC<Props> = ({
               Máximo deseado ≈ 9 alumnos por equipo.
             </div>
 
+            {/* --- AQUÍ ESTÁ EL ARREGLO VISUAL DE LA VISTA PREVIA --- */}
             {preArmar && (
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontWeight: 800, marginBottom: 6 }}>Vista previa de zonas</div>
-                <div style={{ display: "grid", gap: 6 }}>
-                  {Array.from({ length: equipos }).map((_, i) => (
-                    <div key={i} style={{ display: "grid", gridTemplateColumns: "80px 1fr", gap: 8 }}>
-                      <b>Equipo {i + 1}</b>
-                      <div>{zonaSegunIndice(i)}</div>
+              <div style={{ marginTop: 12, padding: 10, background: "#F8F9FA", borderRadius: 8, border: "1px solid #eee" }}>
+                <div style={{ fontWeight: 800, marginBottom: 6, color: "#333" }}>
+                  Vista previa de zonas ({equipos} equipos)
+                </div>
+                <div style={{ display: "grid", gap: 6, maxHeight: "150px", overflowY: "auto" }}>
+                  {/* Usamos Math.max para asegurar que al menos se renderice 1 si equipos es 0/null */}
+                  {Array.from({ length: Math.max(1, equipos || 1) }).map((_, i) => (
+                    <div key={i} style={{ display: "grid", gridTemplateColumns: "80px 1fr", gap: 8, fontSize: 13 }}>
+                      <b style={{color: theme.azul}}>Equipo {i + 1}</b>
+                      <div style={{color: "#555"}}>{zonaSegunIndice(i)}</div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
+            {/* ----------------------------------------------------- */}
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12, gap: 8 }}>

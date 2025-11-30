@@ -744,78 +744,81 @@ function useStorageSignal(keys: string[], pollMs = 800) {
 
 
 
+// web/src/App.tsx
+
 function useSharedFlow(isTeacher: boolean, initial: FlowState, roomCode: string) {
   const [flow, setFlow] = useState<FlowState>(initial);
   const [remoteTeams, setRemoteTeams] = useState<any[]>([]);
 
-  // 1. POLLING: Leer del servidor cada 1.5s (Tanto Profe como Alumno)
+  // 1. Polling (Lectura)
   useEffect(() => {
     if (!roomCode) return;
-
     const fetchState = async () => {
       const data = await getRoomState(roomCode);
       if (data) {
-        setFlow(prev => ({
-          ...prev,
-          // Mapeamos la respuesta del DB al estado local
-          step: data.faseActual as any,
-          remaining: data.segundosRestantes,
-          running: data.timerCorriendo,
-          formation: data.formation === "auto" ? "auto" : "manual",
-        }));
+        setFlow(prev => {
+            // Solo actualizamos si hay cambios reales para evitar re-renders innecesarios
+            if (prev.step === data.faseActual && prev.remaining === data.segundosRestantes && prev.running === data.timerCorriendo) {
+                return prev;
+            }
+            return {
+                ...prev,
+                step: data.faseActual as any,
+                remaining: data.segundosRestantes,
+                running: data.timerCorriendo,
+                formation: data.formation === "auto" ? "auto" : "manual",
+                roomCode: data.roomCode,
+            };
+        });
         
-if (Array.isArray(data.equipos)) {
-     setRemoteTeams(data.equipos); 
-}
+        if (Array.isArray(data.equipos)) {
+            // Comparación simple para evitar bucles de actualización de equipos
+            setRemoteTeams(prev => {
+                if (prev.length === data.equipos.length) return prev; 
+                return data.equipos;
+            });
+        }
       }
     };
-
-    fetchState(); // Primera carga inmediata
-    const interval = setInterval(fetchState, 1500); // Repetir cada 1.5s
+    fetchState();
+    const interval = setInterval(fetchState, 1500);
     return () => clearInterval(interval);
   }, [roomCode]);
 
-  // 2. CLOCK LOCAL (Solo Profesor): Hace la cuenta regresiva y la sube al server
+  // 2. Clock Local
   useEffect(() => {
     if (!isTeacher || !flow.running) return;
-    
     const id = setInterval(() => {
       setFlow(f => {
         const nextTime = Math.max(0, f.remaining - 1);
         const isRunning = nextTime > 0;
-        
-        // Sincronizamos con el servidor cada segundo (Optimistic UI)
-        // Nota: En prod idealmente se sincroniza cada 5s, pero aquí forzamos para suavidad
         updateRoomState(roomCode, { remaining: nextTime, running: isRunning });
-        
         return { ...f, remaining: nextTime, running: isRunning };
       });
     }, 1000);
-
     return () => clearInterval(id);
   }, [isTeacher, flow.running, roomCode]);
 
-  // 3. FUNCIONES DE CONTROL (Publican al API)
-  const publish = (next: Partial<FlowState>) => {
+  // 3. FUNCIONES DE CONTROL (¡AHORA CON USECALLBACK!)
+  const publish = useCallback((next: Partial<FlowState>) => {
     setFlow(prev => {
       const newState = { ...prev, ...next };
-      // Enviar cambio al backend
-      updateRoomState(roomCode, next); 
+      updateRoomState(roomCode, next);
       return newState;
     });
-  };
+  }, [roomCode]); // Solo cambia si roomCode cambia
 
-  const setStep = (step: FlowStep, remaining?: number) => 
-    publish({ step, remaining: remaining ?? flow.remaining, running: false });
+  const setStep = useCallback((step: FlowStep, remaining?: number) => 
+    publish({ step, remaining: remaining, running: false }), [publish]);
 
-  const startTimer = (seconds?: number) => 
-    publish({ remaining: seconds ?? flow.remaining, running: true });
+  const startTimer = useCallback((seconds?: number) => 
+    publish({ remaining: seconds, running: true }), [publish]);
 
-  const pauseTimer = () => 
-    publish({ running: false });
+  const pauseTimer = useCallback(() => 
+    publish({ running: false }), [publish]);
 
-  const resetTimer = (seconds: number) => 
-    publish({ remaining: seconds, running: false });
+  const resetTimer = useCallback((seconds: number) => 
+    publish({ remaining: seconds, running: false }), [publish]);
 
   return { flow, setStep, startTimer, pauseTimer, resetTimer, publish, remoteTeams };
 }
