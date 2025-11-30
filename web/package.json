@@ -16,9 +16,10 @@
   },
   "devDependencies": {
     "@types/estree": "^1.0.8",
-    "@types/node": "^18.19.10",
+    "@types/node": "^18.19.130",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.1.1",
     "typescript": "^5.3.3",
     "vite": "^5.0.12"
   },
