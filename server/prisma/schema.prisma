@@ -50,6 +50,7 @@ model Sala {
   faseActual      String  @default("lobby")
   timerCorriendo  Boolean @default(false)
   segundosRestantes Int   @default(0)
+  formacion       String  @default("manual")
   
   // --- CONFIGURACIÓN DE TIEMPOS (Snapshot para esta sesión) ---
   t_rompehielo   Int @default(180)

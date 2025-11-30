@@ -1,5 +1,10 @@
-// App.tsx
-import { createRoom, joinRoom, API, ProfAuth, generateCode, health } from "./api";
+import { getConfig, saveThemesConfig, saveRouletteConfigDB, saveChecklistConfigDB } from "./api";
+import { 
+  createRoom, joinRoom, API, ProfAuth, generateCode, health,
+  getRoomState, updateRoomState, 
+  updateTeamScore, updateTeamData, submitPeerEvaluation, getTeamIdByName
+} from "./api";
+
 import React, {
   useEffect,
   useLayoutEffect,
@@ -9,6 +14,7 @@ import React, {
   memo,
   useCallback,
 } from "react";
+
 // Componentes de animación/UI/Core (Asumidos en la carpeta "componentes/")
 import TeamworkMiniAnim from "./componentes/TeamworkMiniAnim";
 import EmpathyAnimacion from "./componentes/EmpathyAnimacion";
@@ -26,12 +32,9 @@ import RuedaPresentacion from "./componentes/RuedaPresentacion";
 import RuletaDesafioLego from "./componentes/RuletaDesafioLego";
 import { FlowState, ESTADO_INICIAL, FlowStep, TITULOS_PASOS } from "./componentes/flow";
 
-// Importaciones de archivos estáticos (ajusta las rutas según tu estructura)
 import originalImg from "./componentes/assets/original.jpg";
 import modificadaImg from "./componentes/assets/modificada.jpg";
-// src/App.tsx:32
 import imgQR from "./componentes/assets/QR.jpg";
-/* ============ UTILES CORE ============ */
 
 function mmss(sec: number): string {
   const s = Math.max(0, Math.floor(sec || 0));
@@ -739,68 +742,82 @@ function useStorageSignal(keys: string[], pollMs = 800) {
   return tick;
 }
 
-/* --SHARED FLOW-- */
-function useSharedFlow(isTeacher: boolean, initial: FlowState) {
-  const [flow, setFlow] = useState<FlowState>(() =>
-    normalizeFlow(readJSON(FLOW_KEY, initial), initial)
-  );
+
+
+function useSharedFlow(isTeacher: boolean, initial: FlowState, roomCode: string) {
+  const [flow, setFlow] = useState<FlowState>(initial);
+  const [remoteTeams, setRemoteTeams] = useState<any[]>([]);
+
+  // 1. POLLING: Leer del servidor cada 1.5s (Tanto Profe como Alumno)
   useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === FLOW_KEY && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          setFlow(normalizeFlow(parsed, initial));
-        } catch {}
+    if (!roomCode) return;
+
+    const fetchState = async () => {
+      const data = await getRoomState(roomCode);
+      if (data) {
+        setFlow(prev => ({
+          ...prev,
+          // Mapeamos la respuesta del DB al estado local
+          step: data.faseActual as any,
+          remaining: data.segundosRestantes,
+          running: data.timerCorriendo,
+          formation: data.formation === "auto" ? "auto" : "manual",
+        }));
+        
+if (Array.isArray(data.equipos)) {
+     setRemoteTeams(data.equipos); 
+}
       }
     };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
+
+    fetchState(); // Primera carga inmediata
+    const interval = setInterval(fetchState, 1500); // Repetir cada 1.5s
+    return () => clearInterval(interval);
+  }, [roomCode]);
+
+  // 2. CLOCK LOCAL (Solo Profesor): Hace la cuenta regresiva y la sube al server
+  useEffect(() => {
+    if (!isTeacher || !flow.running) return;
+    
+    const id = setInterval(() => {
+      setFlow(f => {
+        const nextTime = Math.max(0, f.remaining - 1);
+        const isRunning = nextTime > 0;
+        
+        // Sincronizamos con el servidor cada segundo (Optimistic UI)
+        // Nota: En prod idealmente se sincroniza cada 5s, pero aquí forzamos para suavidad
+        updateRoomState(roomCode, { remaining: nextTime, running: isRunning });
+        
+        return { ...f, remaining: nextTime, running: isRunning };
+      });
+    }, 1000);
+
+    return () => clearInterval(id);
+  }, [isTeacher, flow.running, roomCode]);
+
+  // 3. FUNCIONES DE CONTROL (Publican al API)
   const publish = (next: Partial<FlowState>) => {
-    setFlow((prev) => {
-      const newFlow = normalizeFlow({ ...prev, ...next }, initial);
-      writeJSON(FLOW_KEY, newFlow);
-      try {
-        window.dispatchEvent(
-          new StorageEvent("storage", {
-            key: FLOW_KEY,
-            newValue: JSON.stringify(newFlow),
-          })
-        );
-      } catch {}
-      return newFlow;
+    setFlow(prev => {
+      const newState = { ...prev, ...next };
+      // Enviar cambio al backend
+      updateRoomState(roomCode, next); 
+      return newState;
     });
   };
 
-  useEffect(() => {
-    if (!isTeacher || !flow.running) return;
-    const id = window.setInterval(() => {
-      setFlow((f) => {
-        const left = Math.max(0, f.remaining - 1);
-        const nf = { ...f, remaining: left, running: left > 0 && f.running };
-        writeJSON(FLOW_KEY, nf);
-        try {
-          window.dispatchEvent(
-            new StorageEvent("storage", {
-              key: FLOW_KEY,
-              newValue: JSON.stringify(nf),
-            })
-          );
-        } catch {}
-        return nf;
-      });
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [isTeacher, flow.running]);
-  const setStep = (step: FlowStep, remaining?: number) =>
+  const setStep = (step: FlowStep, remaining?: number) => 
     publish({ step, remaining: remaining ?? flow.remaining, running: false });
-  const startTimer = (seconds?: number) =>
+
+  const startTimer = (seconds?: number) => 
     publish({ remaining: seconds ?? flow.remaining, running: true });
-  const pauseTimer = () => publish({ running: false });
-  const resetTimer = (seconds: number) =>
+
+  const pauseTimer = () => 
+    publish({ running: false });
+
+  const resetTimer = (seconds: number) => 
     publish({ remaining: seconds, running: false });
 
-  return { flow, setStep, startTimer, pauseTimer, resetTimer, publish };
+  return { flow, setStep, startTimer, pauseTimer, resetTimer, publish, remoteTeams };
 }
 
 /* --ANALYTICS HOOK-- */
@@ -1180,8 +1197,8 @@ function handleProfLoginSuccess(auth: ProfAuth) {
     formation: "manual",
   };
   const isTeacher = mode === "prof";
-  const { flow, setStep, startTimer, pauseTimer, resetTimer, publish } =
-    useSharedFlow(isTeacher, initialFlow);
+  const { flow, setStep, startTimer, pauseTimer, resetTimer, publish, remoteTeams } = 
+       useSharedFlow(isTeacher, initialFlow, joinedRoom);
 
 
 useEffect(() => {
@@ -1401,6 +1418,19 @@ const goPrevStep = React.useCallback(() => {
       : [FLOW_KEY, ANALYTICS_KEY, THEMES_KEY],
     800
   );
+  useEffect(() => {
+      getConfig().then(conf => {
+          if (conf?.ruleta) {
+             const mapped = conf.ruleta.map((r:any) => ({
+                 id: String(r.id), label: r.label, desc: r.desc, 
+                 delta: r.delta, type: r.type, weight: r.weight, color: r.color
+             }));
+             if(mapped.length) setRouletteConfig(mapped);
+          }
+      }).catch(() => console.log("Usando config por defecto"));
+
+  }, []);
+
 
   const readyNow = useMemo(
     () => readyCount(activeRoom),
@@ -1548,7 +1578,7 @@ const handleSmartReset = () => {
   );
   const currentMembers =
     teamIdx >= 0 ? analytics.teams[teamIdx].integrantes || [] : [];
-
+  const [myTeamId, setMyTeamId] = useState<number | null>(null);
   const teamFull = currentMembers.length >= MAX_PER_GROUP;
   const alreadyIn =
     (miNombre || "").trim() &&
@@ -1647,17 +1677,15 @@ const handleSmartReset = () => {
   }, [coins, teamId, mode, teamReady]);
 
   const ranking = useMemo(() => {
-    const map = readJSON<Record<string, number>>(COINS_KEY, {});
-    const ready = readyTeamNames(activeRoom);
-    const pairs = Object.entries(map)
-      .filter(([id]) => id.startsWith(`${activeRoom}::`))
-      .map(([id, v]) => ({
-        equipo: id.split("::")[1] || "Equipo",
-        total: v || 0,
-      }))
-      .filter(({ equipo }) => ready.has(equipo));
-    return pairs.sort((a, b) => b.total - a.total);
-  }, [activeRoom, flow.step, storageTick]);
+    const source = remoteTeams || [];
+    
+    const pairs = source.map((t: any) => ({
+        equipo: t.nombre,
+        total: t.puntos || 0 
+    }));
+
+    return pairs.sort((a: any, b: any) => b.total - a.total);
+  }, [remoteTeams]);
 
   type Diff = {
     x: number;
@@ -1687,6 +1715,7 @@ const handleSmartReset = () => {
         const dist = Math.hypot(dx, dy);
         if (dist < d.r) {
           setCoins((c) => c + 1);
+          
           return { ...d, found: true };
         }
         return d;
@@ -1772,14 +1801,24 @@ const handleSmartReset = () => {
     motivaciones: "",
   });
   const [activeBubble, setActiveBubble] = useState<EmpKey>("perfil");
-  const onEmpatiaChange = (k: EmpKey, v: string) => {
-    setEmpatia((prev) => {
-      const wasEmpty = !prev[k]?.trim();
-      const next = { ...prev, [k]: v };
-      if (wasEmpty && next[k].trim()) setCoins((c) => c + 1);
-      return next;
-    });
-  };
+// src/App.tsx
+
+const onEmpatiaChange = (k: EmpKey, v: string) => {
+  setEmpatia((prev) => {
+    const wasEmpty = !prev[k]?.trim();
+    const next = { ...prev, [k]: v };
+    
+    if (myTeamId) {
+        updateTeamData(myTeamId, { mapaEmpatia: JSON.stringify(next) });
+    }
+
+    if (wasEmpty && next[k].trim()) {
+        setCoins((c) => c + 1); 
+        if (myTeamId) updateTeamScore(myTeamId, 1); 
+    }
+    return next;
+  });
+};
   const CHECKLIST_KEY = "udd_checklist_config_v1";
   const DEFAULT_CHECKLIST = [
       { id: "montado", label: "Prototipo montado y estable", isFixed: true, value: 3 },
@@ -1866,6 +1905,7 @@ const defaultTHEMES: any = {
   const saveTHEMES = (next: ThemeConfig) => {
     setTHEMES(next);
     writeJSON(THEMES_KEY, next);
+    saveThemesConfig(next);
     try {
       window.dispatchEvent(
         new StorageEvent("storage", {
@@ -1878,6 +1918,65 @@ const defaultTHEMES: any = {
   const [temaSel, setTemaSel] = useState<ThemeId>("salud");
   const [desafioIndex, setDesafioIndex] = useState(0);
   const desafioActual = THEMES[temaSel].desafios[desafioIndex];
+// web/src/App.tsx
+
+useEffect(() => {
+    const loadConfig = async () => {
+        try {
+            const conf = await getConfig();
+            if (conf) {
+                // 1. Cargar Temas (Mapeo de DB -> Formato App)
+                if (conf.temas && conf.temas.length > 0) {
+                    const mappedThemes: any = {};
+                    conf.temas.forEach((t: any) => {
+                        mappedThemes[t.id] = {
+                            label: t.label,
+                            persona: {
+                                nombre: t.personaNombre || "Persona",
+                                edad: 0,
+                                bio: t.personaBio || "",
+                                img: t.personaImg || ""
+                            },
+                            desafios: t.desafios.map((d: any) => ({
+                                titulo: d.titulo,
+                                descripcion: d.descripcion,
+                                img: d.imgUrl
+                            }))
+                        };
+                    });
+                    setTHEMES(mappedThemes);
+                }
+                
+                // 2. Cargar Ruleta
+                if (conf.ruleta && conf.ruleta.length > 0) {
+                     const mappedRoulette = conf.ruleta.map((r:any) => ({
+                         id: String(r.id), 
+                         label: r.label, 
+                         desc: r.desc || "", // Nota: tu backend envía 'desc' mapeado en routes/admin.ts
+                         delta: r.delta, 
+                         type: r.type, 
+                         weight: r.weight, 
+                         color: r.color
+                     }));
+                     setRouletteConfig(mappedRoulette);
+                }
+
+                // 3. Cargar Checklist
+                if (conf.checklist && conf.checklist.length > 0) {
+                    const mappedChecklist = conf.checklist.map((c: any) => ({
+                        id: String(c.id), // Convertir ID numérico a string para el frontend
+                        label: c.label,
+                        value: c.valor,   // Backend usa 'valor', Frontend usa 'value'
+                        isFixed: c.esFijo
+                    }));
+                    setChecklistConfig(mappedChecklist);
+                }
+            }
+        } catch (e) { console.error("Usando config por defecto (offline/error)"); }
+    };
+    loadConfig();
+}, []);
+
 
 // --- DEFINICIONES DE TAMAÑO PARA BUBBLE MAP ---
 const bubbleSize = isMobile ? 84 : isTablet ? 96 : 108;
@@ -2173,9 +2272,11 @@ const bubbleHelpers: Record<string, string> = {
   };
 // Configuración Ruleta
 const [rouletteConfig, setRouletteConfig] = useState<any[]>(() => readJSON(ROULETTE_KEY, DEFAULT_ROULETTE));
+
 const saveRouletteConfig = (items: any[]) => {
     setRouletteConfig(items);
-    writeJSON(ROULETTE_KEY, items);
+    writeJSON(ROULETTE_KEY, items); 
+    saveRouletteConfigDB(items);    
 };
 
 const BigTimer: React.FC<{ label?: string; defaultSec?: number }> = ({ label }) => (
@@ -2519,27 +2620,28 @@ function handleCreateRoom() {
     }
   }
 
-  async function handleJoinRoom() {
-    const code = (roomCode || "").trim().toUpperCase();
-    if (!code) {
-      alert("Ingresa el código de sala");
-      return;
-    }
-    try {
-      await joinRoom(code, {
-        name: miNombre || "Alumno",
-        career: miCarrera || "",
-      });
-      publish({ roomCode: code });
-      setJoinedRoom(code);
-      const url = new URL(window.location.href);
-      url.searchParams.set("room", code);
-      window.history.replaceState({}, "", url.toString());
-    } catch (err) {
-      console.error(err);
-      alert("No se pudo unir a la sala. Verifica el código o la conexión.");
-    }
+// web/src/App.tsx
+
+async function handleJoinRoom() {
+  const code = (roomCode || "").trim().toUpperCase();
+  if (!code) {
+    alert("Ingresa el código de sala");
+    return;
   }
+  // SOLO verificamos si la sala existe consultando su estado
+  const state = await getRoomState(code);
+  
+  if (state && state.roomCode) {
+    publish({ roomCode: code });
+    setJoinedRoom(code);
+    // Actualizamos la URL sin recargar
+    const url = new URL(window.location.href);
+    url.searchParams.set("room", code);
+    window.history.replaceState({}, "", url.toString());
+  } else {
+    alert("Sala no encontrada o error de conexión.");
+  }
+}
   const [flowState, setFlowState] = useState<FlowState>(ESTADO_INICIAL);
 
 useEffect(() => {
@@ -2583,9 +2685,7 @@ useEffect(() => {
       window.history.replaceState({}, "", url.toString());
     } catch {}
 
-    // 3) No hace falta forzar setMode:
-    // - Profesor: con activeRoom === "" ya cae en "Crear Nueva Sala".
-    // - Alumno: sin joinedRoom ya cae en "Ingresar código".
+
     setMode("inicio");
   }
 // Configuración Checklist
@@ -2593,8 +2693,8 @@ const [checklistConfig, setChecklistConfig] = useState<any[]>(() => readJSON(CHE
 const saveChecklistConfig = (items: any[]) => {
     setChecklistConfig(items);
     writeJSON(CHECKLIST_KEY, items);
+    saveChecklistConfigDB(items); 
 };
-  // === Fase 0: tips aleatorios (solo conversación, sin inputs) ===
   const F0_TIPS = [
     "tu hobby o pasatiempo",
     "tu superpoder para el equipo hoy",
@@ -3186,93 +3286,89 @@ const pulseKeyframes = `
                       👥 Equipos en sala {activeRoom}
                     </div>
 
-                    {teamsForCurrentRoom(analytics, activeRoom).length === 0 ? (
-                      <div style={{ opacity: 0.7 }}>
-                        Aún no se crean grupos…
-                      </div>
-                    ) : (
-                      <div style={{ display: "grid", gap: 8 }}>
-                        {teamsForCurrentRoom(analytics, activeRoom).map(
-                          (name, i) => {
-                            const team = analytics.teams.find(
-                              (t: any) =>
-                                t.roomCode === activeRoom && t.teamName === name
-                            );
-                            const integrantes = team?.integrantes || [];
-                            const key = `${activeRoom}::${name}`;
-                            const abierto = !!openTeams[key];
+                    {remoteTeams.length === 0 ? (
+  <div style={{ opacity: 0.7 }}>
+    Aún no se crean grupos…
+  </div>
+) : (
+  <div style={{ display: "grid", gap: 8 }}>
+    {remoteTeams.map((team: any, i: number) => {
+        const name = team.nombre;
+        const integrantes = team.integrantes || [];
+        const key = `${activeRoom}::${name}`;
+        const abierto = !!openTeams[key];
 
-                            return (
-                              <div
-                                key={key}
-                                style={{
-                                  border: `1px solid ${theme.border}`,
-                                  borderRadius: 12,
-                                  background: "#fff",
-                                }}
-                              >
-                                {/* Cabecera del grupo */}
-                                <button
-                                  onClick={() => toggleTeamOpen(key)}
-                                  style={{
-                                    all: "unset",
-                                    display: "grid",
-                                    gridTemplateColumns: "1fr auto",
-                                    alignItems: "center",
-                                    padding: "10px 12px",
-                                    cursor: "pointer",
-                                  }}
-                                  aria-expanded={abierto}
-                                >
-                                  <div
-                                    style={{
-                                      fontWeight: 800,
-                                      color: theme.azul,
-                                    }}
-                                  >
-                                    {name}
-                                  </div>
-                                  <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                    {abierto
-                                      ? "▲ ocultar"
-                                      : "▼ ver integrantes"}
-                                  </div>
-                                </button>
+        return (
+          <div
+            key={key}
+            style={{
+              border: `1px solid ${theme.border}`,
+              borderRadius: 12,
+              background: "#fff",
+            }}
+          >
+            {/* Cabecera del grupo */}
+            <button
+              onClick={() => toggleTeamOpen(key)}
+              style={{
+                all: "unset",
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                alignItems: "center",
+                padding: "10px 12px",
+                cursor: "pointer",
+              }}
+              aria-expanded={abierto}
+            >
+              <div
+                style={{
+                  fontWeight: 800,
+                  color: theme.azul,
+                }}
+              >
+                {name}
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>
+                {abierto
+                  ? "▲ ocultar"
+                  : "▼ ver integrantes"}
+              </div>
+            </button>
 
-                                {/* Lista de integrantes */}
-                                {abierto && (
-                                  <div style={{ padding: "0 14px 10px 20px" }}>
-                                    {integrantes.length ? (
-                                      <ul
-                                        style={{
-                                          margin: 0,
-                                          paddingLeft: 16,
-                                          fontSize: 13,
-                                        }}
-                                      >
-                                        {integrantes.map(
-                                          (p: any, j: number) => (
-                                            <li key={j}>
-                                              {p.nombre} — {p.carrera || "—"}
-                                            </li>
-                                          )
-                                        )}
-                                      </ul>
-                                    ) : (
-                                      <div
-                                        style={{ opacity: 0.6, fontSize: 13 }}
-                                      >
-                                        (sin integrantes registrados)
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          }
-                        )}
-                      </div>
+            {/* Lista de integrantes */}
+            {abierto && (
+              <div style={{ padding: "0 14px 10px 20px" }}>
+                {integrantes.length ? (
+                  <ul
+                    style={{
+                      margin: 0,
+                      paddingLeft: 16,
+                      fontSize: 13,
+                    }}
+                  >
+                    {integrantes.map(
+                      (p: any, j: number) => (
+                        <li key={j}>
+                          {p.nombre} — {p.carrera || "—"}
+                        </li>
+                      )
                     )}
+                  </ul>
+                ) : (
+                  <div
+                    style={{ opacity: 0.6, fontSize: 13 }}
+                  >
+                    (sin integrantes registrados)
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      }
+    )}
+  </div>
+)}
                   </div>
                 </div>
               </div>
@@ -4152,102 +4248,125 @@ const pulseKeyframes = `
 
 {/* --- LOBBY / FORMACIÓN DE EQUIPOS (CORREGIDO) --- */}
 {flow.step === "lobby" && !teamReady && (
-                flow.formation === "auto" ? (
-                  // === MODO AUTO: SOLO ELEGIR EQUIPO Y CONFIRMAR ===
-                  <Card title={`Sala ${activeRoom}`} subtitle="Confirma tu equipo para ingresar" width={600}>
-                    <div style={{ textAlign: 'left', marginBottom: 20 }}>
-                      <label style={{ fontWeight: 800, color: theme.azul, display: 'block', marginBottom: 8 }}>Selecciona tu Equipo</label>
-                      <select value={groupName} onChange={(e) => setGroupName(e.target.value)} style={{ ...baseInput, padding: 12, fontSize: 16 }}>
-                        <option value="">-- Elige tu grupo --</option>
-                        {getTeamsForRoom(analytics, activeRoom).map((t, i) => (<option key={i} value={t}>{t}</option>))}
-                      </select>
+    flow.formation === "auto" ? (
+        // === MODO AUTO (Originalmente: SELECT) ===
+        // 🚨 CAMBIO: Muestra la vista MANUAL cuando la formación es "auto" (Excel subido)
+        <Card title={`Sala ${activeRoom}`} subtitle="Crea tu grupo y marca listo" width={980}>
+            <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "1fr 1fr", gap: 12, textAlign: "left" }}>
+                
+                {/* Columna Izq: Nombre Equipo */}
+                <div style={{ ...panelBox }}>
+                    <div style={badgeTitle}>Nombre del equipo</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+                        <input placeholder="Ej: Aurora..." value={groupName} onChange={(e) => setGroupName(e.target.value)} style={baseInput} />
+                        <Btn label="Sugerir" full={false} variant="outline" onClick={() => {
+                            const taken = new Set(remoteTeams);
+                            const sug = TEAM_SUGGESTIONS.find(s => !taken.has(s)) || `Grupo ${taken.size + 1}`;
+                            setGroupName(sug);
+                        }} />
                     </div>
-                    {groupName && (
-                      <div style={{ background: "#F8F9FA", padding: 16, borderRadius: 12, border: "1px solid #E3E8EF", marginBottom: 20, textAlign: "left" }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#888", marginBottom: 8, textTransform: "uppercase" }}>Integrantes registrados:</div>
-                        <ul style={{ margin: 0, paddingLeft: 20, color: theme.texto }}>
-                          {(analytics.teams.find(t => t.roomCode === activeRoom && t.teamName === groupName)?.integrantes || []).map((m:any, i:number) => (
-                            <li key={i}><strong>{m.nombre}</strong></li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
-                      <Btn onClick={() => setMode("inicio")} bg={theme.amarillo} fg={theme.texto} label="⬅ Volver" full={false} />
-                      <Btn label="✅ Confirmar y Entrar" full={false} disabled={!groupName} onClick={() => setTeamReady(true)} />
-                    </div>
-                  </Card>
-                ) : (
-                  // === MODO MANUAL: SOLO EQUIPO Y NOMBRES (SIN CARRERA) ===
-                  <Card title={`Sala ${activeRoom}`} subtitle="Crea tu grupo y marca listo" width={980}>
-                    <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "1fr 1fr", gap: 12, textAlign: "left" }}>
-                      
-                      {/* Columna Izq: Nombre Equipo */}
-                      <div style={{ ...panelBox }}>
-                        <div style={badgeTitle}>Nombre del equipo</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-                          <input placeholder="Ej: Aurora..." value={groupName} onChange={(e) => setGroupName(e.target.value)} style={baseInput} />
-                          <Btn label="Sugerir" full={false} variant="outline" onClick={() => {
-                              const taken = new Set(getTeamsForRoom(analytics, activeRoom));
-                              const sug = TEAM_SUGGESTIONS.find(s => !taken.has(s)) || `Grupo ${taken.size + 1}`;
-                              setGroupName(sug);
-                          }} />
-                        </div>
-                      </div>
+                </div>
 
-                      {/* Columna Der: Integrantes (SOLO NOMBRES, SIN CARRERA) */}
-                      <div style={{ ...panelBox }}>
-                        <div style={badgeTitle}>Integrantes</div>
-                        <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Máximo {MAX_PER_GROUP}. Solo nombres.</div>
+                {/* Columna Der: Integrantes (SOLO NOMBRES, SIN CARRERA) */}
+                <div style={{ ...panelBox }}>
+                    <div style={badgeTitle}>Integrantes</div>
+                    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Máximo {MAX_PER_GROUP}. Solo nombres.</div>
+                    
+                    <div style={{ display: "grid", gap: 8 }}>
+                        {/* Inicializar si vacío con estructura simple */}
+                        {integrantes.length === 0 && setIntegrantes([{ nombre: "", carrera: "" }]) as any}
                         
-                        <div style={{ display: "grid", gap: 8 }}>
-                           {/* Inicializar si vacío con estructura simple */}
-                           {integrantes.length === 0 && setIntegrantes([{ nombre: "", carrera: "" }]) as any}
-                           
-                           {integrantes.map((m, idx) => (
-                             <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 36px", gap: 8, alignItems: "center" }}>
-                               <input 
-                                 placeholder={`Nombre integrante ${idx + 1}`} 
-                                 value={m.nombre} 
-                                 onChange={e => {
-                                    const v = e.target.value;
-                                    const next = [...integrantes];
-                                    next[idx] = { nombre: v, carrera: "" }; 
-                                    setIntegrantes(next);
-                                 }}
-                                 style={baseInput} 
-                               />
-                               <button onClick={() => setIntegrantes(prev => prev.filter((_, i) => i !== idx))} style={{ width: 36, height: 36, borderRadius: 10, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}>✕</button>
-                             </div>
-                           ))}
-                        </div>
-                        <div style={{ marginTop: 8, textAlign: 'right' }}>
-                           <Btn label="+ Integrante" full={false} onClick={() => { if (integrantes.length < MAX_PER_GROUP) setIntegrantes([...integrantes, { nombre: "", carrera: "" }]) }} disabled={integrantes.length >= MAX_PER_GROUP} />
-                        </div>
-                      </div>
+                        {integrantes.map((m, idx) => (
+                            <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 36px", gap: 8, alignItems: "center" }}>
+                                <input 
+                                    placeholder={`Nombre integrante ${idx + 1}`} 
+                                    value={m.nombre} 
+                                    onChange={e => {
+                                        const v = e.target.value;
+                                        const next = [...integrantes];
+                                        next[idx] = { nombre: v, carrera: "" }; 
+                                        setIntegrantes(next);
+                                    }}
+                                    style={baseInput} 
+                                />
+                                <button onClick={() => setIntegrantes(prev => prev.filter((_, i) => i !== idx))} style={{ width: 36, height: 36, borderRadius: 10, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}>✕</button>
+                            </div>
+                        ))}
                     </div>
+                    <div style={{ marginTop: 8, textAlign: 'right' }}>
+                        <Btn label="+ Integrante" full={false} onClick={() => { if (integrantes.length < MAX_PER_GROUP) setIntegrantes([...integrantes, { nombre: "", carrera: "" }]) }} disabled={integrantes.length >= MAX_PER_GROUP} />
+                    </div>
+                </div>
+            </div>
 
-                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20, borderTop: "1px solid #eee", paddingTop: 15 }}>
-                      <Btn onClick={() => setMode("inicio")} bg={theme.amarillo} fg={theme.texto} label="⬅ Volver" full={false} />
-                      <Btn label="Crear Equipo y Entrar" full={false} onClick={() => {
-                          if (!groupName.trim()) return alert("Ponle nombre al equipo");
-                          const clean = integrantes.filter(x => x.nombre.trim());
-                          if (clean.length === 0) return alert("Agrega al menos 1 persona");
-                          
-                          update(a => ({ ...a, teams: [...a.teams, { roomCode: activeRoom, teamName: groupName, integrantes: clean, ts: Date.now() }] }));
-                          
-                          const prev = readJSON<string[]>(READY_KEY, []);
-                          const next = Array.from(new Set([...prev, `${activeRoom}::${groupName}`]));
-                          writeJSON(READY_KEY, next);
-                          try { window.dispatchEvent(new StorageEvent("storage", { key: READY_KEY, newValue: JSON.stringify(next) })); } catch {}
-                          
-                          publish({ expectedTeams: Math.max(MIN_GROUPS, Math.min(flow.expectedTeams || 0 || 0, MAX_GROUPS)) || MIN_GROUPS });
-                          setTeamReady(true);
-                      }} />
-                    </div>
-                  </Card>
-                )
-              )}
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20, borderTop: "1px solid #eee", paddingTop: 15 }}>
+                <Btn onClick={() => setMode("inicio")} bg={theme.amarillo} fg={theme.texto} label="⬅ Volver" full={false} />
+// web/src/App.tsx (Dentro del renderizado del Alumno - Modo Manual)
+
+<Btn label="Crear Equipo y Entrar" full={false} onClick={async () => {
+    if (!groupName.trim()) return alert("Ponle nombre al equipo");
+    const clean = integrantes.filter(x => x.nombre.trim());
+    if (clean.length === 0) return alert("Agrega al menos 1 persona");
+    
+    try {
+        // 1. Llamada real al Backend
+        const res = await joinRoom(activeRoom, {
+            name: miNombre || "Alumno", 
+            career: miCarrera || "",
+            equipoNombre: groupName
+        });
+
+        if (res.ok && res.equipoId) {
+            setMyTeamId(res.equipoId); 
+            setTeamReady(true);       
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Error al crear equipo. Intenta con otro nombre.");
+    }
+}} />
+            </div>
+        </Card>
+    ) : (
+        <Card title={`Sala ${activeRoom}`} subtitle="Confirma tu equipo para ingresar" width={600}>
+            <div style={{ textAlign: 'left', marginBottom: 20 }}>
+                <label style={{ fontWeight: 800, color: theme.azul, display: 'block', marginBottom: 8 }}>Selecciona tu Equipo</label>
+                <select value={groupName} onChange={(e) => setGroupName(e.target.value)} style={{ ...baseInput, padding: 12, fontSize: 16 }}>
+                    <option value="">-- Elige tu grupo --</option>
+                    {remoteTeams.map((t, i) => (<option key={i} value={t}>{t}</option>))}
+                </select>
+            </div>
+            {groupName && (
+                <div style={{ background: "#F8F9FA", padding: 16, borderRadius: 12, border: "1px solid #E3E8EF", marginBottom: 20, textAlign: "left" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#888", marginBottom: 8, textTransform: "uppercase" }}>Integrantes registrados:</div>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: theme.texto }}>
+                        {(analytics.teams.find(t => t.roomCode === activeRoom && t.teamName === groupName)?.integrantes || []).map((m:any, i:number) => (
+                            <li key={i}><strong>{m.nombre}</strong></li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
+                <Btn onClick={() => setMode("inicio")} bg={theme.amarillo} fg={theme.texto} label="⬅ Volver" full={false} />
+<Btn label="✅ Confirmar y Entrar" full={false} disabled={!groupName} onClick={async () => {
+    try {
+        const res = await joinRoom(activeRoom, {
+            name: miNombre || "Alumno",
+            career: miCarrera || "",
+            equipoNombre: groupName // Aquí groupName viene del <select>
+        });
+
+        if (res.ok && res.equipoId) {
+            setMyTeamId(res.equipoId);
+            setTeamReady(true);
+        }
+    } catch (e) {
+        alert("Error al unirse al equipo.");
+    }
+}} />            </div>
+        </Card>
+    )
+)}
           {joinedRoom === activeRoom &&
             activeRoom &&
             teamReady &&
@@ -4452,17 +4571,20 @@ const pulseKeyframes = `
                 Tip: dividan la imagen en zonas y revisen simultáneamente.
               </div>
 
-              <SpotWithImage
-                imgUrlA={originalImg}
-                imgUrlB={modificadaImg}
-                diffs={F1_DIFFS}
-                running={flow.running}
-                theme={theme}
-                targetHeight={560}
-                foundState={diffFound}
-                setFoundState={setDiffFound}
-                onFoundDiff={() => setCoins((c) => c + 1)}
-              />
+<SpotWithImage
+  imgUrlA={originalImg}
+  imgUrlB={modificadaImg}
+  diffs={F1_DIFFS}
+  running={flow.running}
+  theme={theme}
+  targetHeight={560}
+  foundState={diffFound}
+  setFoundState={setDiffFound}
+  onFoundDiff={() => {
+    setCoins((c) => c + 1);
+    if (myTeamId) updateTeamScore(myTeamId, 1);
+  }}
+/>
 
               {/* Eliminamos el botón de avance del alumno */}
             </Card>
@@ -4747,14 +4869,17 @@ const pulseKeyframes = `
                 />
               </div>
               {showLegoRoulette && (
-                <RuletaDesafioLego
-                  onClose={() => setShowLegoRoulette(false)}
-                  esProfesor={false}
-                  onTokenChange={(delta) => setCoins((c) => c + delta)}
-                  items={rouletteConfig} 
-                  maxSpins={maxSpins}
-                  teamName={groupName || "Equipo"}
-                />
+<RuletaDesafioLego
+  onClose={() => setShowLegoRoulette(false)}
+  esProfesor={false}
+  onTokenChange={(delta) => {
+    setCoins((c) => c + delta);
+    if (myTeamId) updateTeamScore(myTeamId, delta);
+  }}
+  items={rouletteConfig} 
+  maxSpins={maxSpins}
+  teamName={groupName || "Equipo"}
+/>
               )}
               
               <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "1fr 1fr", gap: 20, alignItems: "start", textAlign: "left" }}>
@@ -4809,16 +4934,21 @@ const pulseKeyframes = `
                         const isDone = !!completedTasks[item.id];
                         const val = item.value || 0;
 
-                        const toggleTask = () => {
-                            if (item.id === 'foto') return; // La foto es automática (solo lectura aquí)
-                            
-                            const newState = !isDone;
-                            setCompletedTasks(prev => ({ ...prev, [item.id]: newState }));
-                            
-                            // Suma o Resta el valor dinámico configurado
-                            setCoins(c => newState ? c + val : c - val);
-                        };
 
+const toggleTask = () => {
+    if (item.id === 'foto') return; 
+    
+    const newState = !isDone;
+    setCompletedTasks(prev => ({ ...prev, [item.id]: newState }));
+    
+    const delta = newState ? val : -val;
+    
+    setCoins(c => c + delta); 
+    
+    if (myTeamId) {
+        updateTeamScore(myTeamId, delta);
+    }
+};
                         return (
                           <div 
                             key={item.id}
@@ -4987,44 +5117,31 @@ const pulseKeyframes = `
                 const myTeam = groupName || "(sin-nombre)";
                 const isSelf = currentTeam === myTeam;
 
-                // Foto LEGO del equipo actual
-                const photo = getTeamPhoto(activeRoom, currentTeam) || "";
+                const teamData = remoteTeams.find((t: any) => t.nombre === currentTeam);
+                const photo = teamData?.foto || ""; 
 
-                const submitEval = () => {
-                  if (isSelf || sent) return;
+const submitEval = async () => {
+  if (isSelf || sent) return;
 
-                  // 1) Guardar feedback (solo en memoria/analytics local)
-                  update((a) => ({
-                    ...a,
-                    feedbacks: [
-                      ...a.feedbacks,
-                      {
-                        roomCode: activeRoom,
-                        fromTeam: myTeam,
-                        targetTeam: currentTeam,
-                        ratings: scores,
-                        ts: Date.now(),
-                      },
-                    ],
-                  }));
+  const targetId = await getTeamIdByName(activeRoom, currentTeam);
 
-                  // 2) SUMAR TOKENS AL EQUIPO EVALUADO (solo una vez, al hacer clic)
-                  const totalPoints = scores.reduce((sum, n) => sum + n, 0);
-                  const coinsMap = readJSON<Record<string, number>>(
-                    COINS_KEY,
-                    {}
-                  );
-                  const key = `${activeRoom}::${currentTeam}`;
-                  coinsMap[key] = (coinsMap[key] || 0) + totalPoints;
-                  writeJSON(COINS_KEY, coinsMap);
-                  try {
-                    window.dispatchEvent(
-                      new StorageEvent("storage", { key: COINS_KEY })
-                    );
-                  } catch {}
+  if (myTeamId && targetId) {
+      const totalPoints = scores.reduce((sum, n) => sum + n, 0);
+      
+      await submitPeerEvaluation({
+          origenId: myTeamId,
+          destinoId: targetId,
+          puntaje: totalPoints,
+          detalleJson: JSON.stringify(scores),
+          comentario: "Evaluación de pares"
+      });
 
-                  setSent(true);
-                };
+      setSent(true);
+      alert("Evaluación enviada al servidor.");
+  } else {
+      alert("Error: No se pudo identificar al equipo destino.");
+  }
+};
 
                 // =============== UI RETURN ===============
                 return (
@@ -5339,10 +5456,21 @@ function ThemeEditor({ THEMES, setTHEMES, flow, publish }: any) {
   const [f4PrepSec, setF4PrepSec] = useState(flow.f4PrepSeconds ?? 600);
   const [pitchSec, setPitchSec] = useState(flow.pitchSeconds ?? 90);
 
-  const saveAll = () => {
-    publish({ f0Seconds: f0Sec, f1Seconds: f1Sec, f2Seconds: f2Sec, f3Seconds: f3Sec, f4PrepSeconds: f4PrepSec, pitchSeconds: pitchSec });
-    alert("¡Cambios guardados!");
-  };
+const saveAll = () => {
+    if (publish) {
+        publish({ 
+            f0Seconds: f0Sec, 
+            f1Seconds: f1Sec, 
+            f2Seconds: f2Sec, 
+            f3Seconds: f3Sec, 
+            f4PrepSeconds: f4PrepSec, 
+            pitchSeconds: pitchSec 
+        });
+        alert("¡Tiempos de la sesión actual actualizados!");
+    } else {
+        alert("⚠️ Aviso: Los tiempos solo se pueden guardar cuando estás dentro de una sala activa.");
+    }
+};
 
   const updateChallenge = (idx: number, field: string, val: string) => {
     const newThemes = { ...THEMES };
