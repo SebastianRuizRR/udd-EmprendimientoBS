@@ -6,14 +6,11 @@
     "module": "ESNext",
     "skipLibCheck": true,
 
-    // --- CAMBIOS PARA COMPATIBILIDAD CON NETLIFY BUILD ---
-    "moduleResolution": "node",       // Revertido de "bundler" a "node"
-    // "allowImportingTsExtensions": true, // Esta opción debe ser eliminada o puesta en false
+    "moduleResolution": "node",     
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    // -----------------------------------------------------
 
     "strict": true,
     "noUnusedLocals": false,
@@ -21,5 +18,5 @@
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true
   },
-  "include": ["src"]
+  "include": ["src", "."],
 }

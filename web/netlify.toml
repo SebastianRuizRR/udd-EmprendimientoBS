@@ -1,6 +1,12 @@
 [build]
-  command = "CI=false npm run build"  
-  publish = "build"                    
+  # CRÍTICO: Indica a Netlify que debe usar esta subcarpeta como raíz
+  base = "web" 
+
+  # El comando ahora se ejecuta DENTRO de la carpeta 'web'
+  command = "CI=false npm run build"
+  
+  # Directorio de salida, relativo a 'web' (Vite usa 'dist' por defecto)
+  publish = "dist" 
 
 [build.environment]
   NODE_VERSION = "20"
