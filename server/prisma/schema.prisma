@@ -6,10 +6,8 @@ generator client {
 }
 
 datasource db {
-  // NOTA: Cambia a "mysql" o "postgresql" para producción.
-  // Mantenemos "sqlite" para desarrollo local.
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "mysql"
+  url      = env("DATABASE_URL")
 }
 
 // ==========================================
