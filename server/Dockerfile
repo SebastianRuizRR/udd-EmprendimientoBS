@@ -1,4 +1,5 @@
 FROM node:20-alpine
+# Build del server
 
 # OpenSSL para prisma engines
 RUN apk add --no-cache openssl
