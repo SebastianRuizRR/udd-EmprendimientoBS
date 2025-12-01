@@ -4,7 +4,7 @@
 const CLOUD_URL =
   import.meta.env.VITE_API_URL || "http://localhost:4000";
 
-const BASE_URL = CLOUD_URL.replace(/\/$/, "");
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4001";
 
 export const API = {
   baseUrl: BASE_URL,
