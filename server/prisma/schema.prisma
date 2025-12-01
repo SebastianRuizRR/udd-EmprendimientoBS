@@ -10,95 +10,76 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ==========================================
-// 1. USUARIOS Y AUTENTICACIÓN (Admin/Profesor)
-// ==========================================
-
+// 1. USUARIOS
 model Usuario {
-  id        Int      @id @default(autoincrement())
-  nombre    String
-  username  String   @unique // Login
-  password  String   // Hash
-  esAdmin   Boolean  @default(false)
-  creadoEn  DateTime @default(now())
-
-  // Un profesor puede tener múltiples sesiones históricas
-  salasCreadas Sala[] @relation("ProfesorSalas")
+  id           Int      @id @default(autoincrement())
+  nombre       String
+  username     String   @unique
+  password     String
+  esAdmin      Boolean  @default(false)
+  creadoEn     DateTime @default(now())
+  salasCreadas Sala[]   @relation("ProfesorSalas")
 
   @@map("usuarios")
 }
 
-// ==========================================
-// 2. SESIÓN DE JUEGO (La "Sala")
-// ==========================================
-
+// 2. SALAS
 model Sala {
-  id        Int      @id @default(autoincrement())
-  codigo    String   @unique // Código único de la sesión (ej: "XJ9Z2")
+  id                Int      @id @default(autoincrement())
+  codigo            String   @unique
+  anfitrionId       Int
+  anfitrion         Usuario  @relation("ProfesorSalas", fields: [anfitrionId], references: [id])
   
-  // Relación: Quién inició esta sesión
-  anfitrionId Int
-  anfitrion   Usuario @relation("ProfesorSalas", fields: [anfitrionId], references: [id])
-
-  // --- FECHA Y ESTADO DE LA SESIÓN ---
-  creadaEn    DateTime @default(now()) // <--- AQUÍ ESTÁ LA FECHA DE LA SESIÓN
-  estado      String   @default("ACTIVA") // "ACTIVA", "FINALIZADA"
-
-  // --- ESTADO EN TIEMPO REAL (Sync) ---
-  faseActual      String  @default("lobby")
-  timerCorriendo  Boolean @default(false)
-  segundosRestantes Int   @default(0)
-  formacion       String  @default("manual")
+  datosJuego        Json?    // Perfecto para la ruleta
   
-  // --- CONFIGURACIÓN DE TIEMPOS (Snapshot para esta sesión) ---
-  t_rompehielo   Int @default(180)
-  t_diferencias  Int @default(300)
-  t_empatia      Int @default(300)
-  t_creatividad  Int @default(900)
-  t_pitch_prep   Int @default(600)
-  t_pitch_fuego  Int @default(90)
+  creadaEn          DateTime @default(now())
+  estado            String   @default("ACTIVA")
 
-  // Relaciones: Todo lo que ocurre DENTRO de esta sesión
-  equipos Equipo[]        @relation("SalaEquipos")
-  eventos EventoAnalitica[] // Logs de lo que pasó en esta fecha
+  faseActual        String   @default("lobby")
+  timerCorriendo    Boolean  @default(false)
+  segundosRestantes Int      @default(0)
+  formacion         String   @default("manual")
+  
+  t_rompehielo      Int      @default(180)
+  t_diferencias     Int      @default(300)
+  t_empatia         Int      @default(300)
+  t_creatividad     Int      @default(900)
+  t_pitch_prep      Int      @default(600)
+  t_pitch_fuego     Int      @default(90)
+
+  equipos           Equipo[]          @relation("SalaEquipos")
+  eventos           EventoAnalitica[]
 
   @@map("salas")
 }
 
-// ==========================================
-// 3. JUGADORES (Equipos y Alumnos)
-// ==========================================
-
+// 3. EQUIPOS
 model Equipo {
-  id       Int    @id @default(autoincrement())
-  nombre   String
-  
-  // Pertenencia a una sesión específica
-  salaId   Int
-  sala     Sala   @relation("SalaEquipos", fields: [salaId], references: [id], onDelete: Cascade)
+  id                    Int      @id @default(autoincrement())
+  nombre                String
+  salaId                Int
+  sala                  Sala     @relation("SalaEquipos", fields: [salaId], references: [id], onDelete: Cascade)
 
-  // --- PROGRESO Y DATOS DEL JUEGO ---
-  puntos      Int     @default(0)
+  puntos                Int      @default(0)
   
-  // Fase 2: Elección y Trabajo
-  desafioId   Int?    
-  desafio     Desafio? @relation(fields: [desafioId], references: [id])
-  mapaEmpatia String?  // JSON stringificado con las respuestas del Bubble Map
-
-  // Fase 3: Construcción
-  fotoLegoUrl String? 
+  desafioId             Int?    
+  desafio               Desafio? @relation(fields: [desafioId], references: [id])
   
-  // Fase 4: Feedback
-  feedbackData String? // JSON resumen
+  // CORRECCIÓN: Text para JSONs largos
+  mapaEmpatia           String?  @db.Text 
 
-  // Relaciones
+  // CORRECCIÓN CRÍTICA: LongText para las fotos Base64
+  fotoLegoUrl           String?  @db.LongText 
+  
+  feedbackData          String?  @db.Text
+
   integrantes           Integrante[]
   evaluacionesHechas    Evaluacion[] @relation("EvaluacionOrigen")
   evaluacionesRecibidas Evaluacion[] @relation("EvaluacionDestino")
   reflexiones           Reflexion[]
   eventos               EventoAnalitica[]
 
-  @@unique([salaId, nombre]) // No nombres duplicados en la misma sesión
+  @@unique([salaId, nombre])
   @@map("equipos")
 }
 
@@ -106,60 +87,46 @@ model Integrante {
   id       Int     @id @default(autoincrement())
   nombre   String
   carrera  String?
-
   equipoId Int
-  equipo   Equipo @relation(fields: [equipoId], references: [id], onDelete: Cascade)
+  equipo   Equipo  @relation(fields: [equipoId], references: [id], onDelete: Cascade)
 
   @@map("integrantes")
 }
 
-// ==========================================
-// 4. DATOS GENERADOS (Resultados)
-// ==========================================
-
-// Votos entre equipos (Fase 4)
+// 4. RESULTADOS
 model Evaluacion {
   id          Int      @id @default(autoincrement())
   createdAt   DateTime @default(now())
-
   origenId    Int
   origen      Equipo   @relation("EvaluacionOrigen", fields: [origenId], references: [id], onDelete: Cascade)
-  
   destinoId   Int
   destino     Equipo   @relation("EvaluacionDestino", fields: [destinoId], references: [id], onDelete: Cascade)
 
-  puntaje     Int      // Total calculado
-  detalleJson String   // JSON con el desglose de sliders
-  comentario  String?
+  puntaje     Int
+  detalleJson String   @db.Text // JSON de sliders
+  comentario  String?  @db.Text
 
   @@map("evaluaciones")
 }
 
-// Cierre del juego (Fase 5)
 model Reflexion {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
-
   equipoId  Int
   equipo    Equipo   @relation(fields: [equipoId], references: [id], onDelete: Cascade)
-
-  texto     String   // JSON o texto con "Qué aprendí", "Qué costó"
+  texto     String   @db.Text // Reflexiones largas
 
   @@map("reflexiones")
 }
 
-// Logs para el Dashboard de Admin
 model EventoAnalitica {
   id        Int      @id @default(autoincrement())
   timestamp DateTime @default(now())
-
-  tipo      String   // "start_phase", "upload_photo", "interaction"
+  tipo      String
   fase      String?
-  detalle   String?  // JSON extra
-
+  detalle   String?  @db.Text // JSON extra largo
   salaId    Int
   sala      Sala     @relation(fields: [salaId], references: [id], onDelete: Cascade)
-
   equipoId  Int?     
   equipo    Equipo?  @relation(fields: [equipoId], references: [id], onDelete: SetNull)
 
@@ -167,18 +134,15 @@ model EventoAnalitica {
   @@map("eventos_analitica")
 }
 
-// ==========================================
-// 5. CMS & CONFIGURACIÓN (Estático/Global)
-// ==========================================
-
+// 5. CONFIGURACIÓN ADMIN
 model Tema {
-  id            String    @id // "salud", "educacion"
+  id            String    @id
   label         String
   personaNombre String?
-  personaBio    String?
-  personaImg    String?
+  personaBio    String?   @db.Text
+  personaImg    String?   @db.LongText // Foto persona
 
-  desafios Desafio[]
+  desafios      Desafio[]
 
   @@map("temas")
 }
@@ -186,12 +150,11 @@ model Tema {
 model Desafio {
   id          Int    @id @default(autoincrement())
   titulo      String
-  descripcion String
-  imgUrl      String?
+  descripcion String @db.Text // Historias largas
+  imgUrl      String? @db.LongText // Foto desafío
 
   temaId      String
   tema        Tema   @relation(fields: [temaId], references: [id], onDelete: Cascade)
-  
   equipos     Equipo[]
 
   @@map("desafios")
@@ -200,7 +163,7 @@ model Desafio {
 model OpcionRuleta {
   id          Int     @id @default(autoincrement())
   label       String
-  descripcion String
+  descripcion String  @db.Text
   tipo        String
   delta       Int
   peso        Int

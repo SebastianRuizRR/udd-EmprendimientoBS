@@ -27,14 +27,16 @@ const cuerpoCargaMasiva = z.object({
   }))
 });
 
-// Esquema para actualizar el estado del juego (Incluye 'formacion')
+// Esquema para actualizar el estado del juego (Incluye 'formacion' y 'datosJuego')
 const cuerpoActualizarEstado = z.object({
     faseActual: z.string().optional(),
     segundosRestantes: z.number().optional(),
     timerCorriendo: z.boolean().optional(),
     formacion: z.string().optional(), 
-    estado: z.string().optional(), 
-}).strict().partial(); 
+    estado: z.string().optional(),
+    // IMPORTANTE: Permitimos datosJuego para la ruleta
+    datosJuego: z.any().optional() 
+}).partial(); // Quitamos .strict() para permitir flexibilidad o usamos partial
 
 export default function salasRouter(prisma: PrismaClient) {
   const r = Router();
@@ -61,6 +63,7 @@ export default function salasRouter(prisma: PrismaClient) {
     const nombreAnfitrion = parse.data.anfitrion;
     const usernameGen = nombreAnfitrion.toLowerCase().replace(/\s+/g, '.');
 
+    // Upsert para no fallar si el profe ya existe
     const anfitrion = await prisma.usuario.upsert({
         where: { username: usernameGen },
         update: {},
@@ -154,7 +157,7 @@ export default function salasRouter(prisma: PrismaClient) {
       res.json({ ok: true });
   });
 
-  /* GET /salas/:codigo/estado -> Polling completo (Estado + Equipos con ID) */
+  /* GET /salas/:codigo/estado -> Polling completo (Estado + Equipos + datosJuego) */
   r.get("/:codigo/estado", findSalaMiddleware, async (req: Request, res: Response) => {
     const customReq = req as CustomRequest; 
     
@@ -175,6 +178,7 @@ export default function salasRouter(prisma: PrismaClient) {
         timerCorriendo: salaFull.timerCorriendo,
         roomCode: salaFull.codigo,
         formation: salaFull.formacion, 
+        datosJuego: salaFull.datosJuego, // <--- CRUCIAL: Devolver datos de la ruleta
         
         equipos: salaFull.equipos.map(e => ({
             id: e.id,                
@@ -196,8 +200,10 @@ export default function salasRouter(prisma: PrismaClient) {
     if (!parse.success) return res.status(400).json({ error: "Cuerpo inválido", detalle: parse.error.flatten() });
 
     const dataToUpdate: any = { ...parse.data };
-    if (dataToUpdate.formacion) {
-        dataToUpdate.formacion = dataToUpdate.formacion;
+    
+    // Si viene datosJuego, aseguramos que se guarde como JSON
+    if (dataToUpdate.datosJuego) {
+        dataToUpdate.datosJuego = dataToUpdate.datosJuego;
     }
 
     const updatedSala = await prisma.sala.update({
@@ -211,6 +217,7 @@ export default function salasRouter(prisma: PrismaClient) {
         timerCorriendo: updatedSala.timerCorriendo,
         roomCode: updatedSala.codigo,
         formation: updatedSala.formacion, 
+        datosJuego: updatedSala.datosJuego, // <--- Confirmar guardado
     });
   });
 

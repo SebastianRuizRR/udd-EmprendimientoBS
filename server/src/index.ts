@@ -6,13 +6,12 @@ import salasRouter from "./routes/salas.js";
 import authRouter from "./routes/auth.js";
 import equiposRouter from "./routes/equipos.js";
 import evaluacionRouter from "./routes/evaluacion.js";
-import adminRouter from "./routes/admin.js"; // Asegúrate de tener este import si creaste el archivo
+import adminRouter from "./routes/admin.js"; 
 
 const prisma = new PrismaClient();
 const app = express();
 
-// 🚨 CAMBIO CLAVE: origin: true permite que cualquier frontend se conecte
-// Esto soluciona los errores de "Access-Control-Allow-Origin" en desarrollo
+
 app.use(cors({
     origin: true, 
     credentials: true,
@@ -33,5 +32,5 @@ app.use("/admin", adminRouter(prisma));
 
 const PUERTO = Number(process.env.PORT || 4000);
 app.listen(PUERTO, () => {
-  console.log(`🚀 API lista en puerto :${PUERTO}`);
+  console.log(`🚀 SERVIDOR REINICIADO CON CORS - PUERTO :${PUERTO}`);
 });
