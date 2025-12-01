@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import type { ProfAuth } from "../api";
+import { ProfAuth, ProfAuthType } from "../api"; 
 
 type Props = {
-  onSuccess: (auth: ProfAuth) => void;
+  onSuccess: (auth: ProfAuthType) => void;
   onCancel: () => void;
 };
 

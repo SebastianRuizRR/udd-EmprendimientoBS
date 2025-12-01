@@ -1,5 +1,5 @@
 // App.tsx
-import { createRoom, joinRoom, API, ProfAuth, generateCode, health } from "./api";
+import { createRoom, joinRoom, API, ProfAuthType, generateCode, health, updateRoomState } from "./api";
 import React, {
   useEffect,
   useLayoutEffect,
@@ -29,7 +29,7 @@ import { FlowState, ESTADO_INICIAL, FlowStep, TITULOS_PASOS } from "./componente
 // Importaciones de archivos estáticos (ajusta las rutas según tu estructura)
 import originalImg from "./componentes/assets/original.jpg";
 import modificadaImg from "./componentes/assets/modificada.jpg";
-import imgQR from "./componentes/assets/QR.JPG";
+import imgQR from "./componentes/assets/QR.jpg";
 
 /* ============ UTILES CORE ============ */
 
@@ -56,6 +56,7 @@ const theme = {
   rosa: "#E91E63",
   azul: "#1976D2",
   amarillo: "#FFEB3B",
+  verde: "#4CAF50", 
   blanco: "#FFFFFF",
   surfaceAlt: "#F7F9FC",
   gris: "#ECEFF1",
@@ -643,14 +644,14 @@ function countConfirmedChoices(roomCode: string, teams: string[]) {
   }
   return ok;
 }
-
+type DiffPoint = { x: number; y: number; r: number; zone?: number; found?: boolean };
 type ThemeId = "salud" | "sustentabilidad" | "educacion";
 type ThemePersona = { 
   nombre: string; 
   edad: number; 
   bio: string; 
   img?: string; 
-};type ThemeChallenge = { titulo: string; descripcion: string };
+};type ThemeChallenge = { titulo: string; descripcion: string, img?: string; };
 type ThemeConfig = Record<
   ThemeId,
   { label: string; desafios: ThemeChallenge[]; persona: ThemePersona }
@@ -749,9 +750,11 @@ function useSharedFlow(isTeacher: boolean, initial: FlowState) {
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
-  const publish = (next: Partial<FlowState>) => {
+  
+const publish = (next: Partial<FlowState>) => {
     setFlow((prev) => {
       const newFlow = normalizeFlow({ ...prev, ...next }, initial);
+      
       writeJSON(FLOW_KEY, newFlow);
       try {
         window.dispatchEvent(
@@ -761,6 +764,12 @@ function useSharedFlow(isTeacher: boolean, initial: FlowState) {
           })
         );
       } catch {}
+
+      if (newFlow.roomCode) {
+          updateRoomState(newFlow.roomCode, next)
+            .catch((err: any) => console.error("Error sync server", err)); 
+      }
+      
       return newFlow;
     });
   };
@@ -883,7 +892,7 @@ export default function App() {
   const isTablet = useMediaQuery("(max-width: 1180px)");
   const isMobile = useMediaQuery("(max-width: 640px)");
   const [joinedRoom, setJoinedRoom] = useState<string>("");
-  const [profAuth, setProfAuth] = useState<ProfAuth | null>(null);
+  const [profAuth, setProfAuth] = useState<ProfAuthType | null>(null);
   const [showProfLogin, setShowProfLogin] = useState(false);
   const [selectedMember, setSelectedMember] = useState<string>("");
   const [showProfTutorial, setShowProfTutorial] = React.useState(false);
@@ -917,24 +926,8 @@ export default function App() {
     { x: 0.498, y: 0.8877, r: 0.055 }, // Hoja inferior / planta
   ];
 
-  // --- Progreso de "Diferencias" (persistente) ---
-  const DIFF_KEY = "fase1_diff_found_v1";
 
-  const [diffFound, setDiffFound] = React.useState<boolean[]>(() => {
-    // intenta recuperar desde localStorage
-    try {
-      const saved = localStorage.getItem(DIFF_KEY);
-      const parsed = saved ? JSON.parse(saved) : null;
-      if (Array.isArray(parsed)) return parsed as boolean[];
-    } catch {}
-    // si no hay nada guardado, inicializa con todo en false
-    return Array(F1_DIFFS.length).fill(false);
-  });
 
-  // guarda progreso cada vez que cambie
-  React.useEffect(() => {
-    localStorage.setItem(DIFF_KEY, JSON.stringify(diffFound));
-  }, [diffFound]);
 
   const [recommendedGroups, setRecommendedGroups] = useState<
     { nombre: string; integrantes: { nombre: string; carrera: string }[] }[]
@@ -1120,7 +1113,7 @@ export default function App() {
     { id: "demo", name: "Profesor Demo", user: "prof", pass: "prof", isAdmin: false }
 ]));
 
-function handleProfLoginSuccess(auth: ProfAuth) {
+function handleProfLoginSuccess(auth: ProfAuthType) {
   const validProf = allProfs.find((p:any) => p.user === auth.user && p.pass === auth.pass);
 
   if (validProf) {
@@ -1193,6 +1186,44 @@ useEffect(() => {
 
 
   const activeRoom = flow.roomCode || joinedRoom || "";
+
+    const myTeamName = groupName || "sin-equipo"; 
+  const DIFF_KEY = `diff_v1_${activeRoom}_${myTeamName}`; 
+
+  const [diffFound, setDiffFound] = React.useState<boolean[]>(() => {
+    try {
+      const saved = localStorage.getItem(DIFF_KEY);
+      const parsed = saved ? JSON.parse(saved) : null;
+      // Solo cargamos si coincide la longitud, si no, empezamos de cero
+      if (Array.isArray(parsed) && parsed.length === F1_DIFFS.length) return parsed;
+    } catch {}
+    return Array(F1_DIFFS.length).fill(false);
+  });
+
+  // Efecto: Guardar cada vez que cambia (y reiniciar si cambiamos de equipo)
+  useEffect(() => {
+      // Si cambiamos de equipo, intentamos recargar
+      const k = `diff_v1_${activeRoom}_${groupName || "sin-equipo"}`;
+      const saved = localStorage.getItem(k);
+      if(saved) {
+          try { setDiffFound(JSON.parse(saved)); } catch {}
+      } else {
+          setDiffFound(Array(F1_DIFFS.length).fill(false));
+      }
+  }, [groupName, activeRoom]);
+
+  useEffect(() => {
+    if (groupName) {
+        localStorage.setItem(`diff_v1_${activeRoom}_${groupName}`, JSON.stringify(diffFound));
+    }
+  }, [diffFound, groupName, activeRoom]);
+
+  // guarda progreso cada vez que cambie
+  
+  React.useEffect(() => {
+    localStorage.setItem(DIFF_KEY, JSON.stringify(diffFound));
+  }, [diffFound]);
+
   const forceNextPhase = React.useCallback(() => {
     setStep("f5_video");
     publish({ finishedPitch: true, currentIdx: null, running: false });
@@ -1234,16 +1265,21 @@ useEffect(() => {
     return segments.filter((t) => !picked.includes(t));
   }
   
-  // Delegamos el giro a la ruleta para sincronización
-// --- REEMPLAZAR LA FUNCIÓN spinWheel POR ESTA ---
+
 function spinWheel() {
   const avail = availableTeams();
   if (avail.length === 0) return;
 
-  // 1. Publicar estado GIRANDO a todos (Alumnos ven la animación)
-  publish({ wheel: { ...flow.wheel, girando: true, lastWinner: null } });
-
-  // 2. Esperar 4.5 segundos (drama) y luego elegir ganador
+publish({
+  wheel: {
+    segments: flow.wheel?.segments || [],
+    remaining: flow.wheel?.remaining || [],
+    picked: flow.wheel?.picked || [],
+    angulo: flow.wheel?.angulo || 0,
+    girando: true,
+    lastWinner: null
+  }
+});
   setTimeout(() => {
     const winner = avail[Math.floor(Math.random() * avail.length)];
     const nextRemaining = avail.filter((t) => t !== winner);
@@ -1290,7 +1326,7 @@ function spinWheel() {
         running: false,
         // (NO seteamos step aquí)
       });
-      resetTimer(flow.pitchSeconds);
+      resetTimer(flow.pitchSeconds || 90);
       setStep("f4_present", flow.pitchSeconds); // <- step aquí, sin publicar currentIdx otra vez
     }
   }, [
@@ -1413,7 +1449,7 @@ const goPrevStep = React.useCallback(() => {
     const myTeamName = teamId?.split("::")[1] || "Equipo";
     const ch = getTeamChoice(activeRoom, myTeamName);
 
-    if (ch && THEMES[ch.themeId]) {
+    if (ch && THEMES[ch.themeId as keyof typeof THEMES]) {
       if (temaSel !== ch.themeId) setTemaSel(ch.themeId as any);
       if (desafioIndex !== ch.desafioIndex) setDesafioIndex(ch.desafioIndex);
     }
@@ -1504,7 +1540,7 @@ const goPrevStep = React.useCallback(() => {
           remaining: teams,
           picked: [],
           lastWinner: undefined,
-          spinning: false,
+          girando: false,
         },
       });
     }
@@ -3965,7 +4001,7 @@ const saveChecklistConfig = (items: any[]) => {
 
 {flow.step === "f4_present" && (
              <PresentStageTeacher 
-                currentTeam={flow.presentOrder[flow.currentIdx]} 
+                currentTeam={flow.presentOrder[flow.currentIdx ?? 0]} 
                 activeRoom={activeRoom} 
                 onNext={goNextTeam} 
                 pitchSec={flow.pitchSeconds || 90} 
@@ -4090,41 +4126,46 @@ const saveChecklistConfig = (items: any[]) => {
     );
   }
 
-  if (mode === "alumno") {
+if (mode === "alumno") {
     return (
       <div style={appStyles}>
         <Background />
         <GlobalFormCSS />
 
-{showTimeEndNotification && (
-          <div style={{
-            position: 'fixed',
-            top: 20,
-            left: 0, 
-            width: '100%', 
-            display: 'flex',
-            justifyContent: 'center',
-            zIndex: 9999,
-            pointerEvents: 'none', 
-          }}>
-            <div style={{
-              background: '#F44336',
-              color: 'white',
-              padding: '12px 24px',
-              borderRadius: 50,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-              fontWeight: 'bold',
-              fontSize: '18px',
-              animation: 'pulse 1s infinite', 
-              pointerEvents: 'auto',
-              marginTop: 20,
-            }}>
+        {showTimeEndNotification && (
+          <div
+            style={{
+              position: "fixed",
+              top: 20,
+              left: 0,
+              width: "100%",
+              display: "flex",
+              justifyContent: "center",
+              zIndex: 9999,
+              pointerEvents: "none",
+            }}
+          >
+            <div
+              style={{
+                background: "#F44336",
+                color: "white",
+                padding: "12px 24px",
+                borderRadius: 50,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                fontWeight: "bold",
+                fontSize: "18px",
+                animation: "pulse 1s infinite",
+                pointerEvents: "auto",
+                marginTop: 20,
+              }}
+            >
               ⏰ ¡TIEMPO TERMINADO!
             </div>
           </div>
         )}
 
         <AutoCenter>
+          {/* --- 1. LOGIN (SI NO ESTOY UNIDO) --- */}
           {!joinedRoom && (
             <Card
               title="Alumno"
@@ -4152,104 +4193,283 @@ const saveChecklistConfig = (items: any[]) => {
             </Card>
           )}
 
-{/* --- LOBBY / FORMACIÓN DE EQUIPOS (CORREGIDO) --- */}
-{flow.step === "lobby" && !teamReady && (
-                flow.formation === "auto" ? (
-                  // === MODO AUTO: SOLO ELEGIR EQUIPO Y CONFIRMAR ===
-                  <Card title={`Sala ${activeRoom}`} subtitle="Confirma tu equipo para ingresar" width={600}>
-                    <div style={{ textAlign: 'left', marginBottom: 20 }}>
-                      <label style={{ fontWeight: 800, color: theme.azul, display: 'block', marginBottom: 8 }}>Selecciona tu Equipo</label>
-                      <select value={groupName} onChange={(e) => setGroupName(e.target.value)} style={{ ...baseInput, padding: 12, fontSize: 16 }}>
-                        <option value="">-- Elige tu grupo --</option>
-                        {getTeamsForRoom(analytics, activeRoom).map((t, i) => (<option key={i} value={t}>{t}</option>))}
-                      </select>
-                    </div>
-                    {groupName && (
-                      <div style={{ background: "#F8F9FA", padding: 16, borderRadius: 12, border: "1px solid #E3E8EF", marginBottom: 20, textAlign: "left" }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#888", marginBottom: 8, textTransform: "uppercase" }}>Integrantes registrados:</div>
-                        <ul style={{ margin: 0, paddingLeft: 20, color: theme.texto }}>
-                          {(analytics.teams.find(t => t.roomCode === activeRoom && t.teamName === groupName)?.integrantes || []).map((m:any, i:number) => (
-                            <li key={i}><strong>{m.nombre}</strong></li>
-                          ))}
-                        </ul>
+          {/* --- 2. LOBBY / SELECCIÓN DE EQUIPO --- */}
+          {joinedRoom && flow.step === "lobby" && !teamReady && (
+            <>
+              {flow.formation === "auto" ? (
+                // === MODO AUTO ===
+                <Card
+                  title={`Sala ${activeRoom}`}
+                  subtitle="Confirma tu equipo para ingresar"
+                  width={600}
+                >
+                  <div style={{ textAlign: "left", marginBottom: 20 }}>
+                    <label
+                      style={{
+                        fontWeight: 800,
+                        color: theme.azul,
+                        display: "block",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Selecciona tu Equipo
+                    </label>
+                    <select
+                      value={groupName}
+                      onChange={(e) => setGroupName(e.target.value)}
+                      style={{ ...baseInput, padding: 12, fontSize: 16 }}
+                    >
+                      <option value="">-- Elige tu grupo --</option>
+                      {getTeamsForRoom(analytics, activeRoom).map((t: any, i) => {
+                        const nombre = typeof t === "object" ? t.teamName || t.nombre : t;
+                        return (
+                          <option key={i} value={nombre}>
+                            {nombre}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginTop: 12,
+                    }}
+                  >
+                    <Btn
+                      onClick={() => setJoinedRoom("")}
+                      bg={theme.amarillo}
+                      fg={theme.texto}
+                      label="⬅ Salir"
+                      full={false}
+                    />
+                    <Btn 
+  label="✅ Confirmar y Entrar" 
+  full={false} 
+  disabled={!groupName} 
+  onClick={async () => {
+      try {
+          await joinRoom(activeRoom, { 
+              name: "Alumno", 
+              career: "", 
+              equipoNombre: groupName 
+          });
+
+          setTeamReady(true);
+
+          const prev = readJSON<string[]>(READY_KEY, []);
+          const next = Array.from(new Set([...prev, `${activeRoom}::${groupName}`]));
+          writeJSON(READY_KEY, next);
+          try { window.dispatchEvent(new StorageEvent("storage", { key: READY_KEY, newValue: JSON.stringify(next) })); } catch {}
+
+      } catch (e) {
+          console.error(e);
+          alert("Error al unirse. Intenta de nuevo.");
+      }
+  }} 
+/>
+                  </div>
+                </Card>
+              ) : (
+                // === MODO MANUAL ===
+                <Card
+                  title={`Sala ${activeRoom}`}
+                  subtitle="Crea tu grupo y marca listo"
+                  width={980}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: isTablet ? "1fr" : "1fr 1fr",
+                      gap: 12,
+                      textAlign: "left",
+                    }}
+                  >
+                    <div style={{ ...panelBox }}>
+                      <div style={badgeTitle}>Nombre del equipo</div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr auto",
+                          gap: 8,
+                        }}
+                      >
+                        <input
+                          placeholder="Ej: Aurora..."
+                          value={groupName}
+                          onChange={(e) => setGroupName(e.target.value)}
+                          style={baseInput}
+                        />
+                        <Btn
+                          label="Sugerir"
+                          full={false}
+                          variant="outline"
+                          onClick={() => {
+                            const taken = new Set(
+                              getTeamsForRoom(analytics, activeRoom)
+                            );
+                            const sug =
+                              TEAM_SUGGESTIONS.find((s) => !taken.has(s)) ||
+                              `Grupo ${taken.size + 1}`;
+                            setGroupName(sug);
+                          }}
+                        />
                       </div>
-                    )}
-                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
-                      <Btn onClick={() => setMode("inicio")} bg={theme.amarillo} fg={theme.texto} label="⬅ Volver" full={false} />
-                      <Btn label="✅ Confirmar y Entrar" full={false} disabled={!groupName} onClick={() => setTeamReady(true)} />
                     </div>
-                  </Card>
-                ) : (
-                  // === MODO MANUAL: SOLO EQUIPO Y NOMBRES (SIN CARRERA) ===
-                  <Card title={`Sala ${activeRoom}`} subtitle="Crea tu grupo y marca listo" width={980}>
-                    <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "1fr 1fr", gap: 12, textAlign: "left" }}>
-                      
-                      {/* Columna Izq: Nombre Equipo */}
-                      <div style={{ ...panelBox }}>
-                        <div style={badgeTitle}>Nombre del equipo</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-                          <input placeholder="Ej: Aurora..." value={groupName} onChange={(e) => setGroupName(e.target.value)} style={baseInput} />
-                          <Btn label="Sugerir" full={false} variant="outline" onClick={() => {
-                              const taken = new Set(getTeamsForRoom(analytics, activeRoom));
-                              const sug = TEAM_SUGGESTIONS.find(s => !taken.has(s)) || `Grupo ${taken.size + 1}`;
-                              setGroupName(sug);
-                          }} />
-                        </div>
+
+                    <div style={{ ...panelBox }}>
+                      <div style={badgeTitle}>Integrantes</div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          opacity: 0.8,
+                          marginBottom: 6,
+                        }}
+                      >
+                        Máximo {MAX_PER_GROUP}. Solo nombres.
                       </div>
 
-                      {/* Columna Der: Integrantes (SOLO NOMBRES, SIN CARRERA) */}
-                      <div style={{ ...panelBox }}>
-                        <div style={badgeTitle}>Integrantes</div>
-                        <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Máximo {MAX_PER_GROUP}. Solo nombres.</div>
-                        
-                        <div style={{ display: "grid", gap: 8 }}>
-                           {/* Inicializar si vacío con estructura simple */}
-                           {integrantes.length === 0 && setIntegrantes([{ nombre: "", carrera: "" }]) as any}
-                           
-                           {integrantes.map((m, idx) => (
-                             <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 36px", gap: 8, alignItems: "center" }}>
-                               <input 
-                                 placeholder={`Nombre integrante ${idx + 1}`} 
-                                 value={m.nombre} 
-                                 onChange={e => {
-                                    const v = e.target.value;
-                                    const next = [...integrantes];
-                                    next[idx] = { nombre: v, carrera: "" }; 
-                                    setIntegrantes(next);
-                                 }}
-                                 style={baseInput} 
-                               />
-                               <button onClick={() => setIntegrantes(prev => prev.filter((_, i) => i !== idx))} style={{ width: 36, height: 36, borderRadius: 10, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}>✕</button>
-                             </div>
-                           ))}
-                        </div>
-                        <div style={{ marginTop: 8, textAlign: 'right' }}>
-                           <Btn label="+ Integrante" full={false} onClick={() => { if (integrantes.length < MAX_PER_GROUP) setIntegrantes([...integrantes, { nombre: "", carrera: "" }]) }} disabled={integrantes.length >= MAX_PER_GROUP} />
-                        </div>
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {integrantes.length === 0 &&
+                          (setIntegrantes([{ nombre: "", carrera: "" }]) as any)}
+
+                        {integrantes.map((m, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr 36px",
+                              gap: 8,
+                              alignItems: "center",
+                            }}
+                          >
+                            <input
+                              placeholder={`Nombre integrante ${idx + 1}`}
+                              value={m.nombre}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                const next = [...integrantes];
+                                next[idx] = { nombre: v, carrera: "" };
+                                setIntegrantes(next);
+                              }}
+                              style={baseInput}
+                            />
+                            <button
+                              onClick={() =>
+                                setIntegrantes((prev) =>
+                                  prev.filter((_, i) => i !== idx)
+                                )
+                              }
+                              style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: 10,
+                                border: "1px solid #ccc",
+                                background: "#fff",
+                                cursor: "pointer",
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 8, textAlign: "right" }}>
+                        <Btn
+                          label="+ Integrante"
+                          full={false}
+                          onClick={() => {
+                            if (integrantes.length < MAX_PER_GROUP)
+                              setIntegrantes([
+                                ...integrantes,
+                                { nombre: "", carrera: "" },
+                              ]);
+                          }}
+                          disabled={integrantes.length >= MAX_PER_GROUP}
+                        />
                       </div>
                     </div>
+                  </div>
 
-                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20, borderTop: "1px solid #eee", paddingTop: 15 }}>
-                      <Btn onClick={() => setMode("inicio")} bg={theme.amarillo} fg={theme.texto} label="⬅ Volver" full={false} />
-                      <Btn label="Crear Equipo y Entrar" full={false} onClick={() => {
-                          if (!groupName.trim()) return alert("Ponle nombre al equipo");
-                          const clean = integrantes.filter(x => x.nombre.trim());
-                          if (clean.length === 0) return alert("Agrega al menos 1 persona");
-                          
-                          update(a => ({ ...a, teams: [...a.teams, { roomCode: activeRoom, teamName: groupName, integrantes: clean, ts: Date.now() }] }));
-                          
-                          const prev = readJSON<string[]>(READY_KEY, []);
-                          const next = Array.from(new Set([...prev, `${activeRoom}::${groupName}`]));
-                          writeJSON(READY_KEY, next);
-                          try { window.dispatchEvent(new StorageEvent("storage", { key: READY_KEY, newValue: JSON.stringify(next) })); } catch {}
-                          
-                          publish({ expectedTeams: Math.max(MIN_GROUPS, Math.min(flow.expectedTeams || 0 || 0, MAX_GROUPS)) || MIN_GROUPS });
-                          setTeamReady(true);
-                      }} />
-                    </div>
-                  </Card>
-                )
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginTop: 20,
+                      borderTop: "1px solid #eee",
+                      paddingTop: 15,
+                    }}
+                  >
+                    <Btn
+                      onClick={() => setMode("inicio")}
+                      bg={theme.amarillo}
+                      fg={theme.texto}
+                      label="⬅ Volver"
+                      full={false}
+                    />
+                    <Btn
+                      label="Crear Equipo y Entrar"
+                      full={false}
+                      onClick={() => {
+                        if (!groupName.trim())
+                          return alert("Ponle nombre al equipo");
+                        const clean = integrantes.filter((x) =>
+                          x.nombre.trim()
+                        );
+                        if (clean.length === 0)
+                          return alert("Agrega al menos 1 persona");
+
+                        update((a) => ({
+                          ...a,
+                          teams: [
+                            ...a.teams,
+                            {
+                              roomCode: activeRoom,
+                              teamName: groupName,
+                              integrantes: clean,
+                              ts: Date.now(),
+                            },
+                          ],
+                        }));
+
+                        const prev = readJSON<string[]>(READY_KEY, []);
+                        const next = Array.from(
+                          new Set([
+                            ...prev,
+                            `${activeRoom}::${groupName}`,
+                          ])
+                        );
+                        writeJSON(READY_KEY, next);
+                        try {
+                          window.dispatchEvent(
+                            new StorageEvent("storage", {
+                              key: READY_KEY,
+                              newValue: JSON.stringify(next),
+                            })
+                          );
+                        } catch {}
+
+                        publish({
+                          expectedTeams:
+                            Math.max(
+                              MIN_GROUPS,
+                              Math.min(
+                                flow.expectedTeams || 0 || 0,
+                                MAX_GROUPS
+                              )
+                            ) || MIN_GROUPS,
+                        });
+                        setTeamReady(true);
+                      }}
+                    />
+                  </div>
+                </Card>
               )}
+            </>
+          )}
+
+          {/* --- 3. ESPERA (SI YA ESTOY LISTO) --- */}
           {joinedRoom === activeRoom &&
             activeRoom &&
             teamReady &&
@@ -4259,71 +4479,29 @@ const saveChecklistConfig = (items: any[]) => {
                 subtitle="Aún no inicia la fase 1"
                 width={720}
               >
-                <div style={{ textAlign: "center", fontSize: 18, padding: 20 }}>
+                <div
+                  style={{
+                    textAlign: "center",
+                    fontSize: 18,
+                    padding: 20,
+                  }}
+                >
                   ⏳ Esperando a que el profesor comience...
                 </div>
                 <div
-                  style={{ textAlign: "center", opacity: 0.7, fontSize: 14 }}
+                  style={{
+                    textAlign: "center",
+                    opacity: 0.7,
+                    fontSize: 14,
+                  }}
                 >
                   Verifica en la sala del profesor que tu grupo aparece como{" "}
                   <b>listo</b>.
                 </div>
-
-                {/* --- Botón de marcar grupo como listo --- */}
-                <div style={{ marginTop: 24, textAlign: "center" }}>
-                  <button
-                    onClick={() => {
-                      const room = activeRoom || flow.roomCode;
-                      const team = (groupName || flow.teamName || "").trim();
-
-                      if (!room) {
-                        alert("No hay sala activa.");
-                        return;
-                      }
-                      if (!team) {
-                        alert("Selecciona tu equipo antes de marcar listo.");
-                        return;
-                      }
-
-                      const teamKey = `${room}::${team}`;
-                      const prev = readJSON<string[]>(READY_KEY, []);
-                      if (!prev.includes(teamKey)) {
-                        const nuevos = [...prev, teamKey];
-                        writeJSON(READY_KEY, nuevos);
-                        try {
-                          window.dispatchEvent(
-                            new StorageEvent("storage", {
-                              key: READY_KEY,
-                              newValue: JSON.stringify(nuevos),
-                            })
-                          );
-                        } catch {}
-                        alert(`✅ Tu grupo (${team}) fue marcado como listo.`);
-                      } else {
-                        alert(
-                          `Tu grupo (${team}) ya estaba marcado como listo.`
-                        );
-                      }
-                    }}
-                    style={{
-                      background: "#0D6EFD",
-                      color: "#fff",
-                      fontWeight: 700,
-                      border: "none",
-                      borderRadius: 10,
-                      padding: "10px 18px",
-                      cursor: "pointer",
-                      fontSize: 15,
-                      boxShadow: "0 3px 6px rgba(0,0,0,0.2)",
-                    }}
-                  >
-                    ✅ Marcar grupo como listo
-                  </button>
-                </div>
               </Card>
             )}
 
-          {/* ===== FASE 0 — INSTRUCCIONES (ALUMNO) ===== */}
+          {/* --- RESTO DE FASES (F0, F1, F2...) --- */}
           {flow.step === "f0_instr" && (
             <Card
               title="Fase 1 — ¡Nos conocemos rápido!"
@@ -4331,16 +4509,14 @@ const saveChecklistConfig = (items: any[]) => {
               width={900}
             >
               <div style={{ textAlign: "left", lineHeight: 1.6 }}>
-                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
-                  <span
-                    style={{
-                      animation: "pulse 1.6s ease-in-out infinite",
-                      display: "inline-block",
-                    }}
-                  >
-                    🗣️
-                  </span>{" "}
-                  Indicaciones
+                <div
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    marginBottom: 8,
+                  }}
+                >
+                  <span style={pulseStyle}>🗣️</span> Indicaciones
                 </div>
                 <ul>
                   <li>En equipos, preséntense rápidamente</li>
@@ -4353,15 +4529,11 @@ const saveChecklistConfig = (items: any[]) => {
                 <div style={{ opacity: 0.8, marginTop: 8 }}>
                   No es necesario escribir nada — solo conversen 😊
                 </div>
-                <div style={{ marginTop: 12, fontSize: 13, opacity: 0.7 }}>
-                  El/la profe iniciará el tiempo
-                </div>
               </div>
             </Card>
           )}
 
-          {/* ===== FASE 0 — ACTIVIDAD (ALUMNO) ===== */}
-{/* ===== FASE 0 — ACTIVIDAD (ALUMNO - DISEÑO MEJORADO) ===== */}
+
 {flow.step === "f0_activity" && (
             <Card
               title="👋 ¡Rompiendo el Hielo!"
@@ -4985,7 +5157,7 @@ const saveChecklistConfig = (items: any[]) => {
             >
               {(() => {
                 // =============== CONTEXT VARIABLES ===============
-                const currentTeam = flow.presentOrder?.[flow.currentIdx] ?? "-";
+                const currentTeam = flow.presentOrder?.[flow.currentIdx ?? 0] ?? "-";
                 const myTeam = groupName || "(sin-nombre)";
                 const isSelf = currentTeam === myTeam;
 
@@ -5462,6 +5634,7 @@ const PROFS_KEY = "udd_professors_db_v1";
 const SESSIONS_KEY = "udd_sessions_log_v1";
 
 // Componente Dashboard Admin (Completo con Gestión de Usuarios y Sesiones)
+// Componente Dashboard Admin (Completo y Conectado)
 function AdminDashboard({
   analytics, THEMES, setTHEMES, flow, onBack, ranking, clearMetrics, activeRoom, publish,
   rouletteConfig, saveRouletteConfig,
@@ -5469,7 +5642,22 @@ function AdminDashboard({
 }: any) {
   const [tab, setTab] = useState<"resumen" | "profesores" | "sesiones" | "temas" | "ruleta" | "checklist" | "analitica">("resumen");
 
-  // --- ESTADO PROFESORES ---
+  // --- 1. ESTADO PARA MÉTRICAS REALES DE LA BD ---
+  const [stats, setStats] = useState({ users: 0, rooms: 0, teams: 0, challenges: {} });
+
+  // --- 2. CARGAR MÉTRICAS AL INICIAR ---
+  useEffect(() => {
+    // Usamos la API configurada para pedir datos reales al backend
+    // Asegúrate de que API.baseUrl esté importado o disponible
+    if (tab === "resumen" || tab === "analitica") {
+        fetch(`${API.baseUrl}/admin/analytics`)
+            .then(res => res.json())
+            .then(data => setStats(data))
+            .catch(err => console.error("Error cargando stats", err));
+    }
+  }, [tab]);
+
+  // --- ESTADO PROFESORES (Local, deberías conectarlo a API si quieres persistencia real de usuarios) ---
   const [professors, setProfessors] = useState<any[]>(() => readJSON(PROFS_KEY, [
       { id: "admin", name: "Administrador", user: "admin", pass: "admin", isAdmin: true },
       { id: "demo", name: "Profesor Demo", user: "prof", pass: "prof", isAdmin: false }
@@ -5499,7 +5687,6 @@ function AdminDashboard({
   };
 
   // --- HELPER SESIONES ---
-  // Obtener equipos de una sesión específica (histórico)
   const getSessionTeams = (code: string) => {
       return analytics.teams.filter((t: any) => t.roomCode === code);
   };
@@ -5533,19 +5720,25 @@ function AdminDashboard({
         </div>
       </div>
 
-      {/* --- PESTAÑA: RESUMEN --- */}
+      {/* --- PESTAÑA: RESUMEN (AHORA CON DATOS REALES 'stats') --- */}
       {tab === "resumen" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 15 }}>
            <div style={{...panelBox, textAlign:'center'}}>
-               <div style={{fontSize:32, fontWeight:900, color:theme.azul}}>{professors.length}</div>
+               <div style={{fontSize:32, fontWeight:900, color:theme.azul}}>
+                   {stats.users || professors.length} {/* Usa dato real si existe */}
+               </div>
                <div style={{fontSize:12, color:'#666'}}>Usuarios Registrados</div>
            </div>
            <div style={{...panelBox, textAlign:'center'}}>
-               <div style={{fontSize:32, fontWeight:900, color:theme.rosa}}>{sessions.length}</div>
+               <div style={{fontSize:32, fontWeight:900, color:theme.rosa}}>
+                   {stats.rooms || sessions.length}
+               </div>
                <div style={{fontSize:12, color:'#666'}}>Sesiones Realizadas</div>
            </div>
            <div style={{...panelBox, textAlign:'center'}}>
-               <div style={{fontSize:32, fontWeight:900, color:theme.verde}}>{analytics.teams.length}</div>
+               <div style={{fontSize:32, fontWeight:900, color:theme.verde}}>
+                   {stats.teams || analytics.teams.length}
+               </div>
                <div style={{fontSize:12, color:'#666'}}>Equipos Totales Históricos</div>
            </div>
         </div>
@@ -5652,11 +5845,17 @@ function AdminDashboard({
           </div>
       )}
 
-      {/* --- OTRAS PESTAÑAS (Reutilizadas) --- */}
+      {/* --- OTRAS PESTAÑAS --- */}
       {tab === "temas" && <ThemeEditor THEMES={THEMES} setTHEMES={setTHEMES} flow={flow} publish={publish} />}
       {tab === "ruleta" && <RouletteEditor items={rouletteConfig} setItems={saveRouletteConfig} maxSpins={0} setMaxSpins={()=>{}} />}
       {tab === "checklist" && <ChecklistEditor items={checklistConfig} setItems={saveChecklistConfig} />}
-      {tab === "analitica" && <AdminAnalytics />}
+      
+      {/* --- PESTAÑA: ANALÍTICA (Conectada a 'stats') --- */}
+      {tab === "analitica" && (
+        <AdminAnalytics 
+            realData={stats} // <--- ¡AQUÍ PASAMOS LOS DATOS REALES!
+        />
+      )}
     </Card>
   );
 }
@@ -5922,46 +6121,68 @@ function ThemeChallengeSection({
 }
 
 function PresentStageTeacher({
-  currentTeam, 
-  onNext, 
-  pitchSec, 
-  startTimer, 
-  pauseTimer, 
-  onReset, 
-  remaining,
-}: {
-  currentTeam: string; 
-  onNext: () => void; 
-  pitchSec: number;
-  startTimer: () => void; 
-  pauseTimer: () => void; 
-  onReset: () => void; 
-  remaining: number;
-}) {
+  currentTeam, onNext, pitchSec, startTimer, pauseTimer, onReset, remaining, activeRoom
+}: any) {
+  // Recuperar foto del equipo actual
+  const photo = getTeamPhoto(activeRoom, currentTeam);
+
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <Card title="Pitch en curso" subtitle={`Presenta: ${currentTeam}`} width={900}>
+    <div style={{ width: "clamp(320px, 95vw, 1100px)" }}> {/* Ancho máximo controlado */}
+      
+      {/* GRID LAYOUT: 2 Columnas */}
+      <div style={{ 
+        display: "grid", 
+        gridTemplateColumns: "1fr 1fr", // Dos columnas iguales
+        gap: "20px", 
+        marginBottom: "20px" 
+      }}>
         
-        <div style={{ marginTop: 12 }}>
-          <div style={{ ...panelBox, textAlign: "center" }}>
-            {/* ... */}
-            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", }}>
-              <Btn onClick={() => startTimer()} label="▶ Iniciar" full={false} />
-              <Btn onClick={() => pauseTimer()} label="⏸ Pausa" full={false} />
-              
-              <Btn 
-                onClick={onReset} 
-                label={`⟲ Reset (${pitchSec}s)`} 
-                full={false} 
-                variant="outline" 
-              />
-            </div>
+        {/* 1. IZQUIERDA ARRIBA: FOTO */}
+        <div style={{ ...panelBox, minHeight: "300px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", background: "#333" }}>
+          {photo ? (
+            <img src={photo} alt="Prototipo" style={{ maxWidth: "100%", maxHeight: "280px", objectFit: "contain", borderRadius: 8 }} />
+          ) : (
+            <div style={{ color: "#aaa", fontStyle: "italic" }}>Sin foto del prototipo</div>
+          )}
+          <div style={{ color: "#fff", marginTop: 8, fontSize: 14 }}>Prototipo: {currentTeam}</div>
+        </div>
+
+        {/* 2. DERECHA ARRIBA: TIEMPO + NOMBRE */}
+        <div style={{ ...panelBox, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
+          <div style={{ fontSize: 16, color: theme.azul, fontWeight: 900, textTransform: "uppercase", marginBottom: 10 }}>
+            Presentando ahora
+          </div>
+          <div style={{ fontSize: 42, fontWeight: 900, color: theme.texto, marginBottom: 20 }}>
+            {currentTeam}
+          </div>
+          
+          {/* TIMER GIGANTE */}
+          <div style={{ fontSize: 80, fontWeight: 900, color: remaining < 10 ? "#F44336" : "#333", lineHeight: 1 }}>
+            {mmss(remaining)}
+          </div>
+          
+          {/* CONTROLES TIMER */}
+          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+            <Btn onClick={() => startTimer()} label="▶" full={false} />
+            <Btn onClick={() => pauseTimer()} label="⏸" full={false} />
+            <Btn onClick={onReset} label="⟲" full={false} variant="outline" />
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
-          <Btn onClick={onNext} label="Siguiente grupo" full={false} />
+
+        {/* 3. ABAJO (SPAN 2): ORDEN DE GRUPOS */}
+        <div style={{ gridColumn: "1 / -1", ...panelBox }}> {/* Ocupa todo el ancho */}
+           <div style={{ fontWeight: 900, color: theme.azul, marginBottom: 10 }}>Orden de Presentación</div>
+           {/* Aquí podrías reutilizar el componente OrderBoard o listar simple */}
+           <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 10 }}>
+              {/* Muestra la lista horizontalmente para ahorrar espacio vertical */}
+              <div style={{padding: "8px 16px", background: theme.amarillo, borderRadius: 20, fontWeight: "bold"}}>
+                 Siguiente: { /* Lógica para ver el siguiente si quieres */ "..." }
+              </div>
+              <Btn onClick={onNext} label="Siguiente Grupo ▶" full={false} bg={theme.azul} />
+           </div>
         </div>
-      </Card>
+
+      </div>
     </div>
   );
 }
@@ -6484,9 +6705,15 @@ const ImageCropper = ({ onCancel, onSave }: { onCancel: () => void, onSave: (dat
 function SpotWithImage({
   imgUrlA, imgUrlB, diffs, onFoundDiff, running, theme, targetHeight = 560, foundState, setFoundState,
 }: {
-  imgUrlA: string; imgUrlB: string; diffs: DiffPoint[]; onFoundDiff: () => void;
-  running: boolean; theme: any; targetHeight?: number; foundState: boolean[];
-  setFoundState: (next: boolean[]) => void;
+  imgUrlA: string; 
+  imgUrlB: string; 
+  diffs: DiffPoint[]; 
+  onFoundDiff: () => void;
+  running: boolean; 
+  theme: any; 
+  targetHeight?: number; 
+  foundState: boolean[];
+  setFoundState: React.Dispatch<React.SetStateAction<boolean[]>>;
 }) {
   const aRef = React.useRef<HTMLDivElement | null>(null);
 

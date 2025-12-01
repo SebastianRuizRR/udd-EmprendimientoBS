@@ -1,11 +1,9 @@
 // web/src/api.ts
 
 
-const CLOUD_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:4000";
-
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4001";
-
+// web/src/api.ts
+const CLOUD_URL = "https://damp-skeleton-5g9grvx6wj942qqj-4001.app.github.dev"; 
+const BASE_URL = CLOUD_URL; 
 export const API = {
   baseUrl: BASE_URL,
 };
@@ -120,7 +118,25 @@ export async function health(): Promise<{ ok: boolean; t: number }> {
 
 export async function getRoomState(roomCode: string) {
   try {
-    return await request<any>(`/salas/${roomCode}/estado`, "GET");
+    const data = await request<any>(`/salas/${roomCode}/estado`, "GET");
+    
+    const extras = data.datosJuego || {};
+
+    return {
+      step: data.faseActual || data.step || "lobby",
+      remaining: data.segundosRestantes ?? 300,
+      running: data.timerCorriendo ?? false,
+      expectedTeams: data.equiposEsperados ?? 0,
+      formation: data.formacion || "manual",
+      wheel: extras.wheel || undefined,
+      presentOrder: extras.presentOrder || [],
+      
+      equipos: Array.isArray(data.equipos) ? data.equipos.map((e: any) => ({
+         teamName: e.nombre || e.teamName,
+         integrantes: e.integrantes || [],
+         roomCode: roomCode
+      })) : []
+    };
   } catch (e) {
     return null;
   }
@@ -128,7 +144,23 @@ export async function getRoomState(roomCode: string) {
 
 export async function updateRoomState(roomCode: string, payload: any) {
   try {
-    return await request<any>(`/salas/${roomCode}/estado`, "PATCH", payload);
+    const dbPayload: any = {};
+    
+    // Mapeos existentes
+    if (payload.step !== undefined) dbPayload.faseActual = payload.step;
+    if (payload.remaining !== undefined) dbPayload.segundosRestantes = payload.remaining;
+    if (payload.running !== undefined) dbPayload.timerCorriendo = payload.running;
+    if (payload.formation !== undefined) dbPayload.formacion = payload.formation;
+    if (payload.expectedTeams !== undefined) dbPayload.equiposEsperados = payload.expectedTeams;
+
+    if (payload.wheel || payload.presentOrder) {
+       dbPayload.datosJuego = {
+          wheel: payload.wheel,
+          presentOrder: payload.presentOrder
+       };
+    }
+
+    return await request<any>(`/salas/${roomCode}/estado`, "PATCH", dbPayload);
   } catch (e) {
     console.error("Error sync state", e);
   }
