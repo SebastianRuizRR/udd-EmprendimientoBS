@@ -25,9 +25,9 @@ export default function adminRouter(prisma: PrismaClient) {
           color: r.color || "#9C27B0"
       }));
 
-      // Mapeamos checklist
+      // Mapeamos checklist (BD: label, valor, esFijo -> Front: label, value, isFixed)
       const checklistFrontend = checklist.map(c => ({
-          id: String(c.id), // Aseguramos string para el frontend
+          id: String(c.id),
           label: c.label,
           value: c.valor,
           isFixed: c.esFijo
@@ -42,10 +42,7 @@ export default function adminRouter(prisma: PrismaClient) {
 
   // 2. GUARDAR TEMAS Y DESAFÍOS (Masivo)
   r.post("/themes", async (req: Request, res: Response) => {
-    const themesObj = req.body; 
-    // Nota: Asumimos que themesObj viene como objeto { salud: {...}, educacion: {...} }
-    // Aquí deberías iterar y guardar. Si ya lo tienes implementado, mantén tu lógica.
-    // ... Tu lógica actual de temas ...
+    // Aquí iría tu lógica de guardado de temas si la implementas
     res.json({ ok: true });
   });
 
@@ -70,20 +67,20 @@ export default function adminRouter(prisma: PrismaClient) {
       res.json({ ok: true });
   });
 
-  // 4. GUARDAR CHECKLIST (¡NUEVO!)
+  // 4. GUARDAR CHECKLIST (CORREGIDO)
   r.post("/checklist", async (req: Request, res: Response) => {
-      const items = req.body; // Array de items del frontend
+      const items = req.body; 
       
       try {
         await prisma.$transaction(async (tx) => {
-            // Borramos los anteriores (estrategia simple: reemplazar todo)
             await tx.itemChecklist.deleteMany();
             
             for(const item of items) {
                 await tx.itemChecklist.create({
                     data: {
-                        label: item.label, // Frontend 'label' -> BD 'titulo'
-                        valor: item.value, // Frontend 'value' -> BD 'puntos'
+                        // Usamos los nombres del schema.prisma
+                        label: item.label, 
+                        valor: item.value, // El frontend manda 'value', la BD tiene 'valor'
                         esFijo: !!item.isFixed
                     }
                 });
@@ -96,7 +93,7 @@ export default function adminRouter(prisma: PrismaClient) {
       }
   });
 
-  // 5. OBTENER ANALÍTICAS REALES (¡NUEVO!)
+  // 5. OBTENER ANALÍTICAS REALES
   r.get("/analytics", async (req: Request, res: Response) => {
     try {
       const [users, rooms, teams] = await Promise.all([
@@ -104,16 +101,12 @@ export default function adminRouter(prisma: PrismaClient) {
         prisma.sala.count(),
         prisma.equipo.count()
       ]);
-
-      // Métricas de uso de desafíos (Agrupación)
-      // Si tienes una tabla de analytics o campo en equipo, úsalo aquí.
-      // Por ahora devolvemos conteos generales.
       
       res.json({
         users,
         rooms,
         teams,
-        challenges: {} // Implementar si tienes tabla de métricas detallada
+        challenges: {} 
       });
     } catch (e) {
       res.status(500).json({ error: "Error stats" });

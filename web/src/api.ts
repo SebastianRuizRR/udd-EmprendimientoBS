@@ -30,14 +30,29 @@ export function generateCode(len = 5): string {
 }
 
 // --- HELPER FETCH ---
+// web/src/api.ts
+
+// ... imports ...
+
 async function request<T>(endpoint: string, method: string, body?: any): Promise<T> {
-  const headers: HeadersInit = { "Content-Type": "application/json" };
+  const savedAuth = ProfAuth.getUser(); 
+  const headers: HeadersInit = { 
+      "Content-Type": "application/json",
+      ...(savedAuth?.id ? { "x-user-id": String(savedAuth.id) } : {}) 
+  };
+
   const response = await fetch(`${BASE_URL}${endpoint}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   
+  if (response.status === 401) {
+      console.warn("⛔ Sesión expirada o usuario eliminado. Cerrando sesión...");
+      ProfAuth.logout(); 
+      throw new Error("Sesión inválida");
+  }
+
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || `Error ${response.status}`);

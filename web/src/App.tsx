@@ -1,5 +1,5 @@
 // App.tsx
-import { createRoom, joinRoom, API, ProfAuthType, generateCode, health, updateRoomState, getRoomState, uploadTeamsBatch } from "./api";
+import { createRoom, joinRoom, API, ProfAuthType, generateCode, health, updateRoomState, getRoomState, uploadTeamsBatch, ProfAuth } from "./api";
 import React, {
   useEffect,
   useLayoutEffect,
@@ -1211,7 +1211,28 @@ useEffect(() => {
           setDiffFound(Array(F1_DIFFS.length).fill(false));
       }
   }, [groupName, activeRoom]);
+  useEffect(() => {
+    if (mode === "inicio" || mode === "alumno") return; // Los alumnos no se vigilan así
 
+    const securityCheck = setInterval(async () => {
+        try {
+            // Llamamos a la ruta protegida.
+            // Si el usuario fue borrado, esto dará 401 y el 'request' hará logout automático.
+            await fetch(`${API.baseUrl}/auth/verify`, {
+                headers: { "x-user-id": String(profAuth?.id) }
+            }).then(res => {
+                if (res.status === 401) {
+                    alert("Tu usuario ha sido eliminado. Cerrando sesión.");
+                    ProfAuth.logout();
+                }
+            });
+        } catch (e) {
+            // Errores de red no nos importan aquí
+        }
+    }, 5000); // Revisar cada 5 segundos
+
+    return () => clearInterval(securityCheck);
+  }, [mode, profAuth]);
   useEffect(() => {
     if (groupName) {
         localStorage.setItem(`diff_v1_${activeRoom}_${groupName}`, JSON.stringify(diffFound));

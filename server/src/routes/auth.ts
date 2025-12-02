@@ -1,6 +1,9 @@
 import { PrismaClient } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
+// Importamos al guardia que acabamos de crear
+// Nota los dos puntos '..' para salir de 'routes' y entrar a 'middleware'
+import { verifyUser } from "../middleware/auth.js"; 
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -11,38 +14,41 @@ const loginSchema = z.object({
 export default function authRouter(prisma: PrismaClient) {
   const r = Router();
 
-  // POST /auth/login (o registro automático si no existe)
+  // LOGIN (Igual que antes)
   r.post("/login", async (req, res) => {
     const parse = loginSchema.safeParse(req.body);
     if (!parse.success) return res.status(400).json({ error: "Datos inválidos" });
 
     const { username, password, nombre } = parse.data;
-
-    // Buscamos si existe el usuario
+    
+    // Lógica de Upsert (Buscar o Crear)
     let user = await prisma.usuario.findUnique({ where: { username } });
 
     if (!user) {
-      // Si no existe, lo creamos (Registro implícito)
       user = await prisma.usuario.create({
         data: {
           username,
-          password, // En prod: usar bcrypt
+          password,
           nombre: nombre || username,
-          esAdmin: username === "admin", // Lógica simple para admin
+          esAdmin: username === "admin",
         }
       });
     } else {
-      // Si existe, verificamos contraseña
       if (user.password !== password) {
         return res.status(401).json({ error: "Contraseña incorrecta" });
       }
     }
 
-    // Retornamos usuario sin password
     res.json({ 
       ok: true, 
-      user: { id: user.id, username: user.username, nombre: user.nombre, esAdmin: user.esAdmin } 
+      user: { id: user.id, nombre: user.nombre, username: user.username, esAdmin: user.esAdmin } 
     });
+  });
+
+  // NUEVA RUTA: VERIFICAR SESIÓN
+  // Usamos 'verifyUser' para protegerla. Si el usuario fue borrado, esto fallará.
+  r.get("/verify", verifyUser, (req, res) => {
+      res.json({ ok: true, msg: "Sigues vivo" });
   });
 
   return r;
