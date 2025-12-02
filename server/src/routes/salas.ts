@@ -1,4 +1,4 @@
-// server/src/routes/salas.ts (Versión Final Fullstack Optimizado)
+// server/src/routes/salas.ts (Versión Final Corregida y Optimizada)
 
 import { PrismaClient, Sala } from "@prisma/client";
 import { Router, Request, Response, NextFunction } from "express"; 
@@ -132,6 +132,10 @@ export default function salasRouter(prisma: PrismaClient) {
 
       // Transacción para velocidad y consistencia
       await prisma.$transaction(async (tx) => {
+          // 1. Borramos equipos anteriores para limpiar (opcional, según tu lógica)
+          // Si prefieres no borrar, comenta la línea deleteMany
+          // await tx.equipo.deleteMany({ where: { salaId: sala.id } });
+
           for (const eq of parse.data.equipos) {
               // Crear equipo
               const nuevoEquipo = await tx.equipo.create({
@@ -152,6 +156,12 @@ export default function salasRouter(prisma: PrismaClient) {
                   });
               }
           }
+
+          // 2. ¡IMPORTANTE! Forzamos la sala a modo "auto" para que alumnos vean la lista
+          await tx.sala.update({
+              where: { id: sala.id },
+              data: { formacion: "auto" }
+          });
       });
 
       res.json({ ok: true });
@@ -177,8 +187,9 @@ export default function salasRouter(prisma: PrismaClient) {
         segundosRestantes: salaFull.segundosRestantes,
         timerCorriendo: salaFull.timerCorriendo,
         roomCode: salaFull.codigo,
-        formation: salaFull.formacion, 
-        datosJuego: salaFull.datosJuego, // <--- CRUCIAL: Devolver datos de la ruleta
+        // CORRECCIÓN: 'formacion' en español para el frontend
+        formacion: salaFull.formacion, 
+        datosJuego: salaFull.datosJuego, 
         
         equipos: salaFull.equipos.map(e => ({
             id: e.id,                
@@ -216,8 +227,9 @@ export default function salasRouter(prisma: PrismaClient) {
         segundosRestantes: updatedSala.segundosRestantes,
         timerCorriendo: updatedSala.timerCorriendo,
         roomCode: updatedSala.codigo,
-        formation: updatedSala.formacion, 
-        datosJuego: updatedSala.datosJuego, // <--- Confirmar guardado
+        // CORRECCIÓN: 'formacion' en español
+        formacion: updatedSala.formacion, 
+        datosJuego: updatedSala.datosJuego, 
     });
   });
 

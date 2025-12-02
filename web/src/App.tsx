@@ -1,5 +1,5 @@
 // App.tsx
-import { createRoom, joinRoom, API, ProfAuthType, generateCode, health, updateRoomState } from "./api";
+import { createRoom, joinRoom, API, ProfAuthType, generateCode, health, updateRoomState, getRoomState, uploadTeamsBatch } from "./api";
 import React, {
   useEffect,
   useLayoutEffect,
@@ -802,7 +802,7 @@ const publish = (next: Partial<FlowState>) => {
   const resetTimer = (seconds: number) =>
     publish({ remaining: seconds, running: false });
 
-  return { flow, setStep, startTimer, pauseTimer, resetTimer, publish };
+  return { flow, setStep, startTimer, pauseTimer, resetTimer, publish, setFlow };
 }
 
 /* --ANALYTICS HOOK-- */
@@ -865,7 +865,7 @@ export default function App() {
       document.removeEventListener("touchstart", unlock);
     };
   }, []);
-  
+  const isUploading = useRef(false);
   const [equiposQty, setEquiposQty] = useState(4);
   const [roomCode, setRoomCode] = useState("");
   const [groupName, setGroupName] = useState("");
@@ -1166,7 +1166,7 @@ function handleProfLoginSuccess(auth: ProfAuthType) {
     formation: "manual",
   };
   const isTeacher = mode === "prof";
-  const { flow, setStep, startTimer, pauseTimer, resetTimer, publish } =
+  const { flow, setStep, startTimer, pauseTimer, resetTimer, publish, setFlow} =
     useSharedFlow(isTeacher, initialFlow);
 
 
@@ -1516,6 +1516,50 @@ const goPrevStep = React.useCallback(() => {
 
   const analyticsApi = useAnalytics();
   const { analytics, update } = analyticsApi;
+  const equiposReales = getTeamsForRoom(analytics, activeRoom);
+
+  // ============================================================
+  // 🔥 SINCRONIZACIÓN AUTOMÁTICA (POLLING)
+  // ============================================================
+  const syncRoomCode = flow.roomCode || joinedRoom;
+
+  useEffect(() => {
+    if (!syncRoomCode) return;
+
+    const interval = setInterval(async () => {
+      // Llamamos a la función que acabamos de importar
+      if (isUploading.current) return;
+      const serverState = await getRoomState(syncRoomCode);
+      
+      if (serverState) {
+        // 1. Actualizamos el flujo (Esto cambia "manual" a "auto" en la pantalla del alumno)
+        setFlow(prev => ({
+          ...prev,
+          step: serverState.step,
+          remaining: serverState.remaining,
+          running: serverState.running,
+          formation: serverState.formation // <--- CLAVE PARA EL CAMBIO DE VISTA
+        }));
+
+        // 2. Actualizamos equipos (Esto hace que aparezca el equipo en la pantalla del profe)
+        if (serverState.equipos) {
+           update(prevAnalytics => {
+              const otros = prevAnalytics.teams.filter(t => t.roomCode !== syncRoomCode);
+              const nuevos = serverState.equipos.map((e: any) => ({
+                 roomCode: syncRoomCode,
+                 teamName: e.teamName, 
+                 integrantes: e.integrantes,
+                 ts: Date.now()
+              }));
+              return { ...prevAnalytics, teams: [...otros, ...nuevos] };
+           });
+        }
+      }
+    }, 2000); // Cada 2 segundos
+
+    return () => clearInterval(interval);
+  }, [syncRoomCode]);
+  // ============================================================
 
   // --- Inicializar ruleta cuando cambian los equipos ---
   const wheelTeamsKey = React.useMemo(
@@ -2272,7 +2316,6 @@ function handleCreateRoom() {
       if (r.ok) {
         const res = await createRoom(
           { hostName: host },
-          profAuth || undefined
         );
         code = res.roomCode;
       } else {
@@ -2416,7 +2459,7 @@ function handleCreateRoom() {
     URL.revokeObjectURL(url);
   }
 
-  function aplicarGruposSugeridos() {
+async function aplicarGruposSugeridos() {
     const code = flow.roomCode || activeRoom;
     if (!code) {
       alert("Primero crea una sala.");
@@ -2427,58 +2470,60 @@ function handleCreateRoom() {
       return;
     }
 
-    // 1. VERIFICACIÓN DE SEGURIDAD (Anti-Carrera)
+    // 1. VERIFICACIÓN DE SEGURIDAD
     const equiposActuales = teamsForCurrentRoom(analytics, code);
-    
     if (equiposActuales.length > 0) {
-        const confirmar = window.confirm(
-            `⚠️ ¡ADVERTENCIA DE SOBRESCRITURA!\n\nYa se han detectado ${equiposActuales.length} equipos en esta sala (probablemente creados manualmente por alumnos).\n\nSi continúas, se BORRARÁN esos equipos y se impondrán los grupos sugeridos del Excel.\n\n¿Estás seguro de eliminar lo existente y aplicar los sugeridos?`
-        );
-        if (!confirmar) return; // Cancelar si el profe se arrepiente
+      const confirmar = window.confirm(
+        `⚠️ ¡ADVERTENCIA!\n\nYa hay ${equiposActuales.length} equipos. ¿Sobrescribir con los del Excel?`
+      );
+      if (!confirmar) return;
     }
 
-    // 2. PURGA Y SOBRESCRITURA EN LA "BASE DE DATOS"
-    update((a) => {
-      // a) Borramos TODOS los equipos que pertenezcan a esta sala actual
-      const otrosEquipos = a.teams.filter((t) => t.roomCode !== code);
-      
-      // b) Insertamos los nuevos desde la sugerencia
-      const nuevos = recommendedGroups.map((g) => ({
-        roomCode: code,
-        teamName: g.nombre,
-        integrantes: g.integrantes || [],
-        ts: Date.now(),
-      }));
-      
-      return { ...a, teams: [...otrosEquipos, ...nuevos] };
-    });
+    // 2. BLOQUEAR LA SINCRONIZACIÓN (Para que no te borre los datos visuales)
+    isUploading.current = true;
 
-    // 3. RESETEAR ESTADO "LISTO" (Esto "patea" a los alumnos que ya habían entrado)
-    const prevReady = readJSON<string[]>(READY_KEY, []);
-    const filteredReady = prevReady.filter((id) => !id.startsWith(`${code}::`));
-    writeJSON(READY_KEY, filteredReady);
     try {
-      window.dispatchEvent(
-        new StorageEvent("storage", {
-          key: READY_KEY,
-          newValue: JSON.stringify(filteredReady),
-        })
-      );
-    } catch {}
+      // 3. ACTUALIZACIÓN VISUAL INMEDIATA (Optimista)
+      // Borramos los viejos y ponemos los nuevos VACÍOS (integrantes: []) para que los alumnos se unan.
+      update((prev) => {
+        const otros = prev.teams.filter((t) => t.roomCode !== code);
+        const nuevos = recommendedGroups.map((g) => ({
+          roomCode: code,
+          teamName: g.nombre,
+          integrantes: [], // Vacío visualmente
+          ts: Date.now(),
+        }));
+        return { ...prev, teams: [...otros, ...nuevos] };
+      });
 
-    // 4. ACTUALIZAR CONFIGURACIÓN DE LA SALA
-    const clamped = Math.max(
-      MIN_GROUPS,
-      Math.min(recommendedGroups.length, MAX_GROUPS)
-    );
-    publish({
-      expectedTeams: clamped,
-      formation: "auto", // Forzamos que la sala pase a modo Automático
-    });
+      // 4. ACTUALIZAR CONFIGURACIÓN DE LA SALA (Contador y Modo Auto)
+      const totalEquipos = recommendedGroups.length;
+      publish({
+        expectedTeams: totalEquipos,
+        formation: "auto", // Importante: Cambia la vista del alumno a lista desplegable
+        step: "lobby",
+      });
 
-    alert(
-      "✅ Grupos aplicados correctamente. Se han eliminado los equipos manuales anteriores."
-    );
+      // 5. ENVIAR AL SERVIDOR (Persistencia Real)
+      // Preparamos el payload limpio
+      const payload = recommendedGroups.map((g) => ({
+        nombre: g.nombre,
+        integrantes: [], // Enviamos vacío al server también
+      }));
+
+      await uploadTeamsBatch(code, payload);
+
+      alert(`✅ ${totalEquipos} grupos creados y sincronizados.`);
+    } catch (error) {
+      console.error(error);
+      alert("Error al guardar en la nube (pero los ves en local).");
+    } finally {
+      // 6. REACTIVAR LA SINCRONIZACIÓN
+      // Le damos un segundo extra para asegurar que el servidor procesó todo
+      setTimeout(() => {
+        isUploading.current = false;
+      }, 1500);
+    }
   }
 
   function resetSalaActual(keepCode: boolean = true) {
@@ -2654,11 +2699,14 @@ const saveChecklistConfig = (items: any[]) => {
     return tip;
   }
 
+// CORRECCIÓN: Validación inteligente de equipos
   useEffect(() => {
     if (mode === "alumno" && activeRoom && groupName) {
       
+      if (!teamReady && flow.formation === "manual") return;
+
+
       const equiposValidos = getTeamsForRoom(analytics, activeRoom);
-      
       const miGrupoExiste = equiposValidos.includes(groupName);
 
       if (!miGrupoExiste) {
@@ -2667,11 +2715,13 @@ const saveChecklistConfig = (items: any[]) => {
         setMiNombre("");     
         setMiCarrera("");
         
-        // Aviso al usuario
-        alert("⚠️ El profesor ha reiniciado los grupos de la sala. Por favor selecciona tu equipo nuevamente.");
+        if (teamReady) {
+            alert("⚠️ El profesor ha reiniciado los grupos. Por favor selecciona nuevamente.");
+        }
       }
     }
-  }, [analytics, activeRoom, groupName, mode]);
+  }, [analytics, activeRoom, groupName, mode, teamReady, flow.formation]);
+
   // === Mini-animación (latido) ===
   const pulseKeyframes = `
 @keyframes pulse {
@@ -3159,10 +3209,9 @@ const saveChecklistConfig = (items: any[]) => {
                   >
                     {activeRoom}
                   </div>
-                  <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
-                    Equipos listos: <b>{readyNow}</b> /{" "}
-                    <b>{flow.expectedTeams}</b>
-                  </div>
+<div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12, padding: 10, background: "#f0f0f0", borderRadius: 8 }}>
+  Equipos listos: <b style={{fontSize: 16}}>{equiposReales.length}</b> / <b style={{fontSize: 16}}>{flow.expectedTeams || equiposQty || 0}</b>
+</div>
                   <Btn
                     onClick={startFirstPhaseFromLobby}
                     label="Continuar con todos"
@@ -6123,63 +6172,77 @@ function ThemeChallengeSection({
 function PresentStageTeacher({
   currentTeam, onNext, pitchSec, startTimer, pauseTimer, onReset, remaining, activeRoom
 }: any) {
-  // Recuperar foto del equipo actual
-  const photo = getTeamPhoto(activeRoom, currentTeam);
+  // Recuperar foto del equipo actual desde el almacenamiento local o estado
+  // Nota: Asegúrate de que 'getTeamPhoto' esté definido en tu App.tsx o impórtalo
+  const photo = getTeamPhoto(activeRoom, currentTeam); 
 
   return (
-    <div style={{ width: "clamp(320px, 95vw, 1100px)" }}> {/* Ancho máximo controlado */}
+    <div style={{ width: "clamp(320px, 95vw, 1100px)", margin: "0 auto" }}>
       
       {/* GRID LAYOUT: 2 Columnas */}
       <div style={{ 
         display: "grid", 
-        gridTemplateColumns: "1fr 1fr", // Dos columnas iguales
+        gridTemplateColumns: "1fr 1fr", 
         gap: "20px", 
         marginBottom: "20px" 
       }}>
         
-        {/* 1. IZQUIERDA ARRIBA: FOTO */}
-        <div style={{ ...panelBox, minHeight: "300px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", background: "#333" }}>
+        {/* 1. IZQUIERDA: FOTO DEL PROTOTIPO */}
+        <div style={{ 
+            background: "#fff", border: "1px solid #E3E8EF", borderRadius: 16, padding: 20, boxShadow: "0 4px 12px rgba(0,0,0,.05)",
+            minHeight: "300px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" 
+        }}>
           {photo ? (
-            <img src={photo} alt="Prototipo" style={{ maxWidth: "100%", maxHeight: "280px", objectFit: "contain", borderRadius: 8 }} />
+            <img src={photo} alt="Prototipo" style={{ maxWidth: "100%", maxHeight: "280px", objectFit: "contain", borderRadius: 8, border: "1px solid #eee" }} />
           ) : (
-            <div style={{ color: "#aaa", fontStyle: "italic" }}>Sin foto del prototipo</div>
+            <div style={{ color: "#aaa", fontStyle: "italic", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <span style={{fontSize: 40}}>📷</span>
+                <span>Sin foto del prototipo</span>
+            </div>
           )}
-          <div style={{ color: "#fff", marginTop: 8, fontSize: 14 }}>Prototipo: {currentTeam}</div>
+          <div style={{ color: "#1976D2", marginTop: 12, fontWeight: "bold" }}>Prototipo: {currentTeam}</div>
         </div>
 
-        {/* 2. DERECHA ARRIBA: TIEMPO + NOMBRE */}
-        <div style={{ ...panelBox, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
-          <div style={{ fontSize: 16, color: theme.azul, fontWeight: 900, textTransform: "uppercase", marginBottom: 10 }}>
+        {/* 2. DERECHA: TIEMPO + NOMBRE + CONTROLES */}
+        <div style={{ 
+            background: "#fff", border: "1px solid #E3E8EF", borderRadius: 16, padding: 20, boxShadow: "0 4px 12px rgba(0,0,0,.05)",
+            display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" 
+        }}>
+          <div style={{ fontSize: 14, color: "#1976D2", fontWeight: 900, textTransform: "uppercase", marginBottom: 5 }}>
             Presentando ahora
           </div>
-          <div style={{ fontSize: 42, fontWeight: 900, color: theme.texto, marginBottom: 20 }}>
+          <div style={{ fontSize: 42, fontWeight: 900, color: "#0D47A1", marginBottom: 15, lineHeight: 1 }}>
             {currentTeam}
           </div>
           
           {/* TIMER GIGANTE */}
-          <div style={{ fontSize: 80, fontWeight: 900, color: remaining < 10 ? "#F44336" : "#333", lineHeight: 1 }}>
+          <div style={{ 
+              fontSize: 90, fontWeight: 900, 
+              color: remaining < 10 ? "#F44336" : "#333", 
+              fontVariantNumeric: "tabular-nums",
+              lineHeight: 1 
+          }}>
             {mmss(remaining)}
           </div>
           
           {/* CONTROLES TIMER */}
-          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-            <Btn onClick={() => startTimer()} label="▶" full={false} />
-            <Btn onClick={() => pauseTimer()} label="⏸" full={false} />
+          <div style={{ display: "flex", gap: 10, marginTop: 25 }}>
+            <Btn onClick={() => startTimer()} label="▶ Iniciar" full={false} />
+            <Btn onClick={() => pauseTimer()} label="⏸ Pausar" full={false} />
             <Btn onClick={onReset} label="⟲" full={false} variant="outline" />
           </div>
         </div>
 
-        {/* 3. ABAJO (SPAN 2): ORDEN DE GRUPOS */}
-        <div style={{ gridColumn: "1 / -1", ...panelBox }}> {/* Ocupa todo el ancho */}
-           <div style={{ fontWeight: 900, color: theme.azul, marginBottom: 10 }}>Orden de Presentación</div>
-           {/* Aquí podrías reutilizar el componente OrderBoard o listar simple */}
-           <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 10 }}>
-              {/* Muestra la lista horizontalmente para ahorrar espacio vertical */}
-              <div style={{padding: "8px 16px", background: theme.amarillo, borderRadius: 20, fontWeight: "bold"}}>
-                 Siguiente: { /* Lógica para ver el siguiente si quieres */ "..." }
-              </div>
-              <Btn onClick={onNext} label="Siguiente Grupo ▶" full={false} bg={theme.azul} />
+        {/* 3. ABAJO (ANCHO COMPLETO): BARRA DE CONTROL */}
+        <div style={{ 
+            gridColumn: "1 / -1", 
+            background: "#fff", border: "1px solid #E3E8EF", borderRadius: 16, padding: 15, boxShadow: "0 4px 12px rgba(0,0,0,.05)",
+            display: "flex", justifyContent: "space-between", alignItems: "center"
+        }}>
+           <div style={{ fontWeight: 700, color: "#555" }}>
+              Gestión del Pitch
            </div>
+           <Btn onClick={onNext} label="Siguiente Grupo ▶" full={false} bg="#1976D2" />
         </div>
 
       </div>
