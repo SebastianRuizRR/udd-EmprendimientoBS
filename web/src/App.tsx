@@ -1114,20 +1114,20 @@ export default function App() {
 ]));
 
 function handleProfLoginSuccess(auth: ProfAuthType) {
-  const validProf = allProfs.find((p:any) => p.user === auth.user && p.pass === auth.pass);
 
-  if (validProf) {
-      if (validProf.isAdmin) {
-          setMode('admin');
-      } else {
-          setProfAuth({ user: validProf.user, pass: validProf.pass, name: validProf.name, id: validProf.id });
-          setMode("prof");
-          setProfStartView("menu");
-      }
-      setShowProfLogin(false);
+  if (auth.user === 'admin') { 
+      setMode('admin');
   } else {
-      alert("Credenciales incorrectas.");
+      setProfAuth({ 
+          user: auth.user, 
+          pass: auth.pass, 
+          name: auth.name || auth.user, 
+          id: auth.id 
+      });
+      setMode("prof");
+      setProfStartView("menu");
   }
+  setShowProfLogin(false);
 }
 
   function handleProfLogout() {
