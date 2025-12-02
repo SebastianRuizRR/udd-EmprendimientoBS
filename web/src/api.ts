@@ -32,14 +32,12 @@ export function generateCode(len = 5): string {
 
 // --- HELPER FETCH ---
 async function request<T>(endpoint: string, method: string, body?: any): Promise<T> {
-  // 1. Recuperar el carnet (ID) para seguridad
   const savedAuth = ProfAuth.getUser();
   const headers: HeadersInit = { 
       "Content-Type": "application/json",
-      // Enviamos el ID si existe para que el middleware 'verifyUser' lo revise
-      ...(savedAuth?.id ? { "x-user-id": String(savedAuth.id) } : {}) 
+      // CAMBIO: Usamos 'Authorization' con el prefijo 'Bearer' (Estándar universal)
+      ...(savedAuth?.id ? { "Authorization": `Bearer ${savedAuth.id}` } : {}) 
   };
-
   const response = await fetch(`${BASE_URL}${endpoint}`, {
     method,
     headers,

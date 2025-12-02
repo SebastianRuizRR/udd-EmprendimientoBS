@@ -1147,20 +1147,22 @@ export default function App() {
     { id: "demo", name: "Profesor Demo", user: "prof", pass: "prof", isAdmin: false }
 ]));
 
+// En web/src/App.tsx
+
 function handleProfLoginSuccess(auth: ProfAuthType) {
 
-  if (auth.user === 'admin') { 
+  
+  console.log("Login exitoso con:", auth);
+
+  setProfAuth(auth);
+
+  if (auth.user === 'admin' || (auth as any).esAdmin) {
       setMode('admin');
   } else {
-      setProfAuth({ 
-          user: auth.user, 
-          pass: auth.pass, 
-          name: auth.name || auth.user, 
-          id: auth.id 
-      });
       setMode("prof");
       setProfStartView("menu");
   }
+  
   setShowProfLogin(false);
 }
 
@@ -1245,28 +1247,26 @@ useEffect(() => {
           setDiffFound(Array(F1_DIFFS.length).fill(false));
       }
   }, [groupName, activeRoom]);
-  useEffect(() => {
-    if (mode === "inicio" || mode === "alumno") return; // Los alumnos no se vigilan así
+
+useEffect(() => {
+    if (mode === "inicio" || mode === "alumno" || !profAuth?.id) return;
 
     const securityCheck = setInterval(async () => {
         try {
-            // Llamamos a la ruta protegida.
-            // Si el usuario fue borrado, esto dará 401 y el 'request' hará logout automático.
             await fetch(`${API.baseUrl}/auth/verify`, {
-                headers: { "x-user-id": String(profAuth?.id) }
+                headers: { "Authorization": `Bearer ${profAuth.id}` } 
             }).then(res => {
                 if (res.status === 401) {
-                    alert("Tu usuario ha sido eliminado. Cerrando sesión.");
+                    console.warn("Usuario no válido. Cerrando.");
                     ProfAuth.logout();
                 }
             });
-        } catch (e) {
-            // Errores de red no nos importan aquí
-        }
-    }, 5000); // Revisar cada 5 segundos
+        } catch (e) { }
+    }, 5000);
 
     return () => clearInterval(securityCheck);
   }, [mode, profAuth]);
+
   useEffect(() => {
     if (groupName) {
         localStorage.setItem(`diff_v1_${activeRoom}_${groupName}`, JSON.stringify(diffFound));

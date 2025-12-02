@@ -4,11 +4,21 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 export const verifyUser = async (req: Request, res: Response, next: NextFunction) => {
-  const userId = req.headers["x-user-id"];
+  // 1. Buscamos el header estándar 'authorization' (Minúsculas automático en Express)
+  const authHeader = req.headers.authorization; 
 
-  if (!userId) {
-    return res.status(401).json({ error: "Falta identificación" });
+  // Formato esperado: "Bearer <ID>"
+  if (!authHeader) {
+    return res.status(401).json({ error: "Falta autorización" });
   }
+
+  // 2. Extraemos el ID (quitamos la palabra "Bearer ")
+  const tokenParts = authHeader.split(" ");
+  if (tokenParts.length !== 2 || tokenParts[0] !== "Bearer") {
+      return res.status(401).json({ error: "Formato inválido" });
+  }
+  
+  const userId = tokenParts[1];
 
   try {
     const user = await prisma.usuario.findUnique({
@@ -16,7 +26,7 @@ export const verifyUser = async (req: Request, res: Response, next: NextFunction
     });
 
     if (!user) {
-      return res.status(401).json({ error: "Usuario eliminado o inválido" });
+      return res.status(401).json({ error: "Usuario eliminado" });
     }
 
     next();
