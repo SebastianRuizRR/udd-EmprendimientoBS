@@ -1,11 +1,12 @@
 import { 
-  createRoom as createRoomMock, // Alias para evitar conflictos si usabas mocks
+  createRoom as createRoomMock, 
   joinRoom as joinRoomMock 
-} from "./api"; // Autoreferencia para mantener compatibilidad si algo importaba de aquí
+} from "./api"; 
 
-// 1. CONFIGURACIÓN DE RED
-// IMPORTANTE: Asegúrate de que este puerto sea el 4001 (Backend Docker)
-const CLOUD_URL = import.meta.env.VITE_API_URL || "http://18.191.239.111:4001";
+// ==========================================
+// 1. CONFIGURACIÓN DE RED (PRODUCCIÓN AWS)
+// ==========================================
+const CLOUD_URL = (import.meta as any).env?.VITE_API_URL || "http://18.191.239.111:4001";
 const BASE_URL = CLOUD_URL; 
 
 console.log("🔗 Conectando API a:", BASE_URL);
@@ -30,14 +31,12 @@ export function generateCode(len = 5): string {
 }
 
 // --- HELPER FETCH ---
-// web/src/api.ts
-
-// ... imports ...
-
 async function request<T>(endpoint: string, method: string, body?: any): Promise<T> {
-  const savedAuth = ProfAuth.getUser(); 
+  // 1. Recuperar el carnet (ID) para seguridad
+  const savedAuth = ProfAuth.getUser();
   const headers: HeadersInit = { 
       "Content-Type": "application/json",
+      // Enviamos el ID si existe para que el middleware 'verifyUser' lo revise
       ...(savedAuth?.id ? { "x-user-id": String(savedAuth.id) } : {}) 
   };
 
@@ -47,9 +46,10 @@ async function request<T>(endpoint: string, method: string, body?: any): Promise
     body: body ? JSON.stringify(body) : undefined,
   });
   
+  // 2. Manejo de sesión expirada (Si el backend te patea con 401)
   if (response.status === 401) {
-      console.warn("⛔ Sesión expirada o usuario eliminado. Cerrando sesión...");
-      ProfAuth.logout(); 
+      console.warn("⛔ Sesión expirada o usuario eliminado.");
+      ProfAuth.logout();
       throw new Error("Sesión inválida");
   }
 
@@ -69,12 +69,22 @@ export const ProfAuth = {
       const res = await fetch(`${BASE_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: email, password: pass }) // Ajustado a username
+        body: JSON.stringify({ username: email, password: pass }) 
       });
 
       if (res.ok) {
         const data = await res.json();
-        localStorage.setItem(PROF_KEY, JSON.stringify(data));
+        
+        // --- CORRECCIÓN CRÍTICA: Guardar datos planos ---
+        // Extraemos los datos útiles de la respuesta del servidor
+        const authData: ProfAuthType = {
+            user: data.user.username,
+            pass: pass, // Opcional
+            id: String(data.user.id), // Vital para el header x-user-id
+            name: data.user.nombre
+        };
+
+        localStorage.setItem(PROF_KEY, JSON.stringify(authData));
         return true;
       }
       return false;
@@ -99,52 +109,36 @@ export const ProfAuth = {
 export const ProfAuthLogic = ProfAuth;
 
 // ==========================================
-// 🔥 FUNCIONES CRÍTICAS (AQUÍ ESTABA EL ERROR)
+// FUNCIONES DE NEGOCIO
 // ==========================================
 
-// 1. Crear Sala
 export async function createRoom(payload: { hostName: string }) {
   const data = await request<any>("/salas", "POST", { anfitrion: payload.hostName });
   return { roomCode: data.codigoSala || data.roomCode };
 }
 
-// 2. Unirse (Alumno)
 export async function joinRoom(roomCode: string, student: any) {
   return request(`/salas/${roomCode}/unirse`, "POST", {
     nombre: student.name,
     carrera: student.career,
-    equipoNombre: student.equipoNombre // Vital para que el profe lo vea
+    equipoNombre: student.equipoNombre 
   });
 }
 
-// 3. Obtener Estado (EL TRADUCTOR)
 export async function getRoomState(roomCode: string) {
   try {
     const data = await request<any>(`/salas/${roomCode}/estado`, "GET");
-    
-    // TRADUCCIÓN: BACKEND (DB) -> FRONTEND (REACT)
     return {
-      // Mapeo de Fases
       step: data.faseActual || data.step || "lobby",
       remaining: data.segundosRestantes ?? 300,
       running: data.timerCorriendo ?? false,
-      
-      // Mapeo de Configuración
-      // Aquí arreglamos el problema del "Modo Manual":
-      // El server manda 'formacion', el front quiere 'formation'.
       formation: data.formacion || "manual", 
       expectedTeams: data.equiposEsperados || 0,
-
-      // Mapeo de Equipos
-      // Aquí arreglamos que el profesor no vea los equipos:
-      // El server manda 'nombre', el front quiere 'teamName'.
       equipos: Array.isArray(data.equipos) ? data.equipos.map((e: any) => ({
-         teamName: e.nombre, // <--- ESTO ARREGLA LA LISTA DEL PROFESOR
+         teamName: e.nombre,
          integrantes: e.integrantes || [],
          roomCode: roomCode
       })) : [],
-
-      // Datos extra
       wheel: data.datosJuego?.wheel,
       presentOrder: data.datosJuego?.presentOrder || []
     };
@@ -153,11 +147,9 @@ export async function getRoomState(roomCode: string) {
   }
 }
 
-// 4. Actualizar Estado (Profesor)
 export async function updateRoomState(roomCode: string, payload: any) {
   try {
     const dbPayload: any = {};
-    // Traducción Inversa: Frontend -> Backend
     if (payload.step !== undefined) dbPayload.faseActual = payload.step;
     if (payload.remaining !== undefined) dbPayload.segundosRestantes = payload.remaining;
     if (payload.running !== undefined) dbPayload.timerCorriendo = payload.running;
@@ -176,7 +168,6 @@ export async function updateRoomState(roomCode: string, payload: any) {
   }
 }
 
-// --- OTRAS FUNCIONES ---
 export async function updateTeamScore(equipoId: number, delta: number) {
   return request<any>(`/equipos/${equipoId}/score`, "PATCH", { delta });
 }
@@ -200,4 +191,9 @@ export async function saveRouletteConfigDB(i: any[]) { return request("/admin/ro
 export async function saveChecklistConfigDB(i: any[]) { return request("/admin/checklist", "POST", i); }
 export async function uploadTeamsBatch(roomCode: string, teamsData: any[]) {
   return request(`/salas/${roomCode}/masivo`, "POST", { equipos: teamsData });
+}
+
+// --- ANALYTICS ---
+export async function getAnalytics() {
+  return request<any>("/admin/analytics", "GET");
 }
