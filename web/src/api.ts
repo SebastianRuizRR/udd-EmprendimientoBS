@@ -5,7 +5,7 @@ import {
 
 // 1. CONFIGURACIÓN DE RED
 // IMPORTANTE: Asegúrate de que este puerto sea el 4001 (Backend Docker)
-const CLOUD_URL = "https://damp-skeleton-5g9grvx6wj942qqj-4001.app.github.dev"; 
+const CLOUD_URL = import.meta.env.VITE_API_URL || "http://18.191.239.111:4001";
 const BASE_URL = CLOUD_URL; 
 
 console.log("🔗 Conectando API a:", BASE_URL);
