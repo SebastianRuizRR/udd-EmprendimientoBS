@@ -1,5 +1,39 @@
 // App.tsx
-import { createRoom, joinRoom, API, ProfAuthType, generateCode, health, updateRoomState, getRoomState, uploadTeamsBatch, ProfAuth, deleteUserDB } from "./api";
+import { 
+  // Funciones Core
+  API, 
+  ProfAuth, 
+  ProfAuthType, 
+  generateCode, 
+  health,
+  createRoom, 
+  joinRoom, 
+
+  // Sincronización y Estado
+  getRoomState, 
+  updateRoomState, 
+  updateTeamScore, 
+  updateTeamData, 
+  submitPeerEvaluation, 
+  getTeamIdByName,
+
+  // Carga Masiva (Excel)
+  uploadTeamsBatch,
+
+  // Configuración Admin (Base de Datos)
+  getConfig, 
+  saveThemesConfig, 
+  saveRouletteConfigDB, 
+  saveChecklistConfigDB,
+
+  // Gestión de Usuarios Admin
+  getUsersDB,
+  deleteUserDB,
+  createUserDB,
+
+  // Analíticas
+  getAnalytics
+} from "./api";
 import React, {
   useEffect,
   useLayoutEffect,
@@ -5727,16 +5761,27 @@ function AdminDashboard({
     }
   }, [tab]);
 
-  // --- ESTADO PROFESORES (Local, deberías conectarlo a API si quieres persistencia real de usuarios) ---
-  const [professors, setProfessors] = useState<any[]>(() => readJSON(PROFS_KEY, [
-      { id: "admin", name: "Administrador", user: "admin", pass: "admin", isAdmin: true },
-      { id: "demo", name: "Profesor Demo", user: "prof", pass: "prof", isAdmin: false }
-  ]));
+
+  const [professors, setProfessors] = useState<any[]>([]); 
   const [newProf, setNewProf] = useState({ name: "", user: "", pass: "" });
 
-  // --- ESTADO SESIONES ---
-  const [sessions, setSessions] = useState<any[]>(() => readJSON(SESSIONS_KEY, []));
+
+  const [sessions, setSessions] = useState<any[]>([]); 
   const [selectedSession, setSelectedSession] = useState<any>(null);
+
+  // --- EFECTO DE CARGA (El que trae los datos reales) ---
+  useEffect(() => {
+      if (tab === "profesores") {
+          // Pedimos la lista al servidor
+          getUsersDB()
+            .then(data => setProfessors(data))
+            .catch(e => console.error("Error cargando profesores:", e));
+      }
+      
+
+  }, [tab]);
+
+
 
   // --- HELPERS PROFESORES ---
   const saveProfs = (list: any[]) => {

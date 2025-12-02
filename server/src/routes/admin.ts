@@ -113,17 +113,61 @@ export default function adminRouter(prisma: PrismaClient) {
     }
   });
 
-  // 6. ELIMINAR USUARIO (Ruta Nueva)
-  r.delete("/users/:id", async (req: Request, res: Response) => {
+// --- GESTIÓN DE USUARIOS (REAL EN BASE DE DATOS) ---
+
+  // 6. OBTENER LISTA DE PROFESORES
+  r.get("/users", async (req: Request, res: Response) => {
     try {
-      const id = Number(req.params.id);
-      await prisma.usuario.delete({ where: { id } });
-      res.json({ ok: true });
+      const users = await prisma.usuario.findMany({
+        orderBy: { nombre: 'asc' }
+      });
+      // Devolvemos datos seguros (sin password)
+      const safeUsers = users.map(u => ({
+        id: String(u.id),
+        name: u.nombre,
+        user: u.username,
+        isAdmin: u.esAdmin
+      }));
+      res.json(safeUsers);
     } catch (e) {
-      res.status(500).json({ error: "No se pudo eliminar" });
+      res.status(500).json({ error: "Error al listar usuarios" });
     }
   });
 
+  // 7. ELIMINAR USUARIO
+  r.delete("/users/:id", async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      // Evitar que se borre a sí mismo o al admin principal si quieres
+      // if (id === 1) return res.status(400).json({ error: "No se puede borrar al Admin maestro" });
+
+      await prisma.usuario.delete({ where: { id } });
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: "Error al eliminar usuario" });
+    }
+  });
+
+  // 8. CREAR USUARIO (Desde el panel)
+  r.post("/users", async (req: Request, res: Response) => {
+      try {
+          const { name, user, pass, isAdmin } = req.body;
+          // Upsert para evitar duplicados por nombre de usuario
+          const newUser = await prisma.usuario.upsert({
+              where: { username: user },
+              update: { nombre: name, password: pass, esAdmin: !!isAdmin },
+              create: {
+                  nombre: name,
+                  username: user,
+                  password: pass,
+                  esAdmin: !!isAdmin
+              }
+          });
+          res.json({ ok: true, id: newUser.id });
+      } catch(e) {
+          res.status(400).json({ error: "Error creando usuario" });
+      }
+  });
 
   return r;
 }

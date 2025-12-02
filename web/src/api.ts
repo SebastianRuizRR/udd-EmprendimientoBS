@@ -199,6 +199,17 @@ export async function getAnalytics() {
 }
 
 // Al final del archivo
+// web/src/api.ts (Agrega esto al final)
+
+// --- GESTIÓN DE USUARIOS ---
+export async function getUsersDB() {
+  return request<any[]>("/admin/users", "GET");
+}
+
 export async function deleteUserDB(id: string) {
   return request<any>(`/admin/users/${id}`, "DELETE");
+}
+
+export async function createUserDB(data: { name: string; user: string; pass: string; isAdmin?: boolean }) {
+  return request<any>("/admin/users", "POST", data);
 }
