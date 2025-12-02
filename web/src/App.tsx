@@ -1150,11 +1150,10 @@ export default function App() {
 // En web/src/App.tsx
 
 function handleProfLoginSuccess(auth: ProfAuthType) {
-
-  
   console.log("Login exitoso con:", auth);
 
   setProfAuth(auth);
+
 
   if (auth.user === 'admin' || (auth as any).esAdmin) {
       setMode('admin');
@@ -5737,8 +5736,7 @@ function ThemeEditor({ THEMES, setTHEMES, flow, publish }: any) {
 const PROFS_KEY = "udd_professors_db_v1";
 const SESSIONS_KEY = "udd_sessions_log_v1";
 
-// Componente Dashboard Admin (Completo con Gestión de Usuarios y Sesiones)
-// Componente Dashboard Admin (Completo y Conectado)
+
 function AdminDashboard({
   analytics, THEMES, setTHEMES, flow, onBack, ranking, clearMetrics, activeRoom, publish,
   rouletteConfig, saveRouletteConfig,
@@ -5746,13 +5744,9 @@ function AdminDashboard({
 }: any) {
   const [tab, setTab] = useState<"resumen" | "profesores" | "sesiones" | "temas" | "ruleta" | "checklist" | "analitica">("resumen");
 
-  // --- 1. ESTADO PARA MÉTRICAS REALES DE LA BD ---
   const [stats, setStats] = useState({ users: 0, rooms: 0, teams: 0, challenges: {} });
 
-  // --- 2. CARGAR MÉTRICAS AL INICIAR ---
   useEffect(() => {
-    // Usamos la API configurada para pedir datos reales al backend
-    // Asegúrate de que API.baseUrl esté importado o disponible
     if (tab === "resumen" || tab === "analitica") {
         fetch(`${API.baseUrl}/admin/analytics`)
             .then(res => res.json())
@@ -5761,54 +5755,45 @@ function AdminDashboard({
     }
   }, [tab]);
 
-
   const [professors, setProfessors] = useState<any[]>([]); 
   const [newProf, setNewProf] = useState({ name: "", user: "", pass: "" });
-
 
   const [sessions, setSessions] = useState<any[]>([]); 
   const [selectedSession, setSelectedSession] = useState<any>(null);
 
-  // --- EFECTO DE CARGA (El que trae los datos reales) ---
   useEffect(() => {
       if (tab === "profesores") {
-          // Pedimos la lista al servidor
           getUsersDB()
             .then(data => setProfessors(data))
             .catch(e => console.error("Error cargando profesores:", e));
       }
-      
-
   }, [tab]);
 
-
-
-  // --- HELPERS PROFESORES ---
-  const saveProfs = (list: any[]) => {
-      setProfessors(list);
-      writeJSON(PROFS_KEY, list);
-  };
-  const addProf = () => {
+  const addProf = async () => {
       if (!newProf.name || !newProf.user || !newProf.pass) return alert("Completa todos los campos");
-      if (professors.some(p => p.user === newProf.user)) return alert("El usuario ya existe");
-      saveProfs([...professors, { ...newProf, id: Date.now().toString(), isAdmin: false }]);
-      setNewProf({ name: "", user: "", pass: "" });
-      alert("Profesor creado exitosamente.");
+      try {
+          await createUserDB(newProf);
+          const updated = await getUsersDB();
+          setProfessors(updated);
+          setNewProf({ name: "", user: "", pass: "" });
+          alert("Profesor creado exitosamente.");
+      } catch(e) {
+          alert("Error: El usuario ya existe.");
+      }
   };
-const deleteProf = async (id: string) => {
+
+  const deleteProf = async (id: string) => {
       if (confirm("¿Estás seguro de eliminar este usuario de la Base de Datos?")) {
           try {
              await deleteUserDB(id); 
-             
              setProfessors(prev => prev.filter(p => String(p.id) !== String(id)));
-             
              alert("Usuario eliminado correctamente.");
           } catch (e) {
              alert("Error al eliminar.");
           }
       }
   };
-  // --- HELPER SESIONES ---
+
   const getSessionTeams = (code: string) => {
       return analytics.teams.filter((t: any) => t.roomCode === code);
   };
@@ -5816,7 +5801,6 @@ const deleteProf = async (id: string) => {
   return (
     <Card title="Panel de Administrador Maestro" subtitle="Gestión Global" width={1100}>
       
-      {/* MENU DE NAVEGACIÓN */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20, borderBottom:'1px solid #eee', paddingBottom:15 }}>
         {[
             ["resumen", "📊 Resumen"],
@@ -5842,31 +5826,29 @@ const deleteProf = async (id: string) => {
         </div>
       </div>
 
-      {/* --- PESTAÑA: RESUMEN (AHORA CON DATOS REALES 'stats') --- */}
       {tab === "resumen" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 15 }}>
            <div style={{...panelBox, textAlign:'center'}}>
                <div style={{fontSize:32, fontWeight:900, color:theme.azul}}>
-                   {stats.users || professors.length} {/* Usa dato real si existe */}
+                   {stats.users}
                </div>
                <div style={{fontSize:12, color:'#666'}}>Usuarios Registrados</div>
            </div>
            <div style={{...panelBox, textAlign:'center'}}>
                <div style={{fontSize:32, fontWeight:900, color:theme.rosa}}>
-                   {stats.rooms || sessions.length}
+                   {stats.rooms}
                </div>
                <div style={{fontSize:12, color:'#666'}}>Sesiones Realizadas</div>
            </div>
            <div style={{...panelBox, textAlign:'center'}}>
                <div style={{fontSize:32, fontWeight:900, color:theme.verde}}>
-                   {stats.teams || analytics.teams.length}
+                   {stats.teams}
                </div>
                <div style={{fontSize:12, color:'#666'}}>Equipos Totales Históricos</div>
            </div>
         </div>
       )}
 
-      {/* --- PESTAÑA: GESTIÓN DE PROFESORES --- */}
       {tab === "profesores" && (
           <div style={{textAlign:'left'}}>
               <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
@@ -5888,7 +5870,6 @@ const deleteProf = async (id: string) => {
                       </div>
                   </div>
 
-                  {/* Crear Nuevo */}
                   <div style={{...panelBox, height:'fit-content'}}>
                       <h4 style={{marginTop:0, color:theme.azul}}>Registrar Nuevo Profesor</h4>
                       <div style={{display:'grid', gap:10}}>
@@ -5902,80 +5883,20 @@ const deleteProf = async (id: string) => {
           </div>
       )}
 
-      {/* --- PESTAÑA: HISTORIAL DE SESIONES --- */}
       {tab === "sesiones" && (
-          <div style={{textAlign:'left', display:'grid', gridTemplateColumns: selectedSession ? '1fr 1fr' : '1fr', gap:20}}>
-              {/* Lista de Sesiones */}
-              <div style={panelBox}>
-                  <h4 style={{marginTop:0}}>Historial de Partidas</h4>
-                  <div style={{maxHeight:400, overflowY:'auto', display:'grid', gap:8}}>
-                      {sessions.slice().reverse().map((s, i) => (
-                          <div 
-                            key={i} 
-                            onClick={()=>setSelectedSession(s)}
-                            style={{
-                                padding:12, border: `1px solid ${selectedSession === s ? theme.azul : '#eee'}`, 
-                                borderRadius:8, cursor:'pointer', background: selectedSession === s ? '#E3F2FD' : '#fff'
-                            }}
-                          >
-                              <div style={{fontWeight:700, display:'flex', justifyContent:'space-between'}}>
-                                  <span>Sala: {s.roomCode}</span>
-                                  <span style={{fontSize:12, color:'#666'}}>{new Date(s.timestamp).toLocaleDateString()}</span>
-                              </div>
-                              <div style={{fontSize:12, color:'#555'}}>
-                                  Profesor: <b>{s.profName}</b>
-                              </div>
-                          </div>
-                      ))}
-                      {sessions.length === 0 && <div style={{opacity:0.6}}>No hay sesiones registradas aún.</div>}
-                  </div>
-              </div>
-
-              {/* Detalles de la Sesión */}
-              {selectedSession && (
-                  <div style={panelBox}>
-                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10}}>
-                        <h4 style={{margin:0, color:theme.azul}}>Detalle Sala {selectedSession.roomCode}</h4>
-                        <button onClick={()=>setSelectedSession(null)} style={{background:'transparent', border:'none', cursor:'pointer'}}>✕</button>
-                      </div>
-                      
-                      <div style={{marginBottom:15, fontSize:13}}>
-                          <div>📅 <b>Fecha:</b> {new Date(selectedSession.timestamp).toLocaleString()}</div>
-                          <div>👨‍🏫 <b>Profesor:</b> {selectedSession.profName}</div>
-                          <div>👥 <b>Equipos:</b> {getSessionTeams(selectedSession.roomCode).length}</div>
-                      </div>
-
-                      <div style={{display:'grid', gap:8, maxHeight:300, overflowY:'auto'}}>
-                          {getSessionTeams(selectedSession.roomCode).map((t:any, i:number) => (
-                              <div key={i} style={{padding:10, background:'#f9f9f9', borderRadius:8, border:'1px solid #eee'}}>
-                                  <div style={{fontWeight:700}}>{t.teamName}</div>
-                                  <ul style={{margin:'5px 0 0 0', paddingLeft:20, fontSize:12}}>
-                                      {t.integrantes.map((m:any, j:number) => (
-                                          <li key={j}>{m.nombre} ({m.carrera})</li>
-                                      ))}
-                                  </ul>
-                              </div>
-                          ))}
-                          {getSessionTeams(selectedSession.roomCode).length === 0 && (
-                              <div style={{fontSize:12, color:'#999', fontStyle:'italic'}}>
-                                  No se encontraron registros de equipos para esta sala.
-                              </div>
-                          )}
-                      </div>
-                  </div>
-              )}
+          <div style={{padding: 20, textAlign:'center', color:'#666'}}>
+             Próximamente: Historial detallado de sesiones desde la base de datos.
+             <br/>(Total actual: {stats.rooms})
           </div>
       )}
 
-      {/* --- OTRAS PESTAÑAS --- */}
       {tab === "temas" && <ThemeEditor THEMES={THEMES} setTHEMES={setTHEMES} flow={flow} publish={publish} />}
       {tab === "ruleta" && <RouletteEditor items={rouletteConfig} setItems={saveRouletteConfig} maxSpins={0} setMaxSpins={()=>{}} />}
       {tab === "checklist" && <ChecklistEditor items={checklistConfig} setItems={saveChecklistConfig} />}
       
-      {/* --- PESTAÑA: ANALÍTICA (Conectada a 'stats') --- */}
       {tab === "analitica" && (
         <AdminAnalytics 
-            realData={stats} // <--- ¡AQUÍ PASAMOS LOS DATOS REALES!
+            realData={stats} 
         />
       )}
     </Card>
