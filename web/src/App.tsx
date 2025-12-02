@@ -1,5 +1,5 @@
 // App.tsx
-import { createRoom, joinRoom, API, ProfAuthType, generateCode, health, updateRoomState, getRoomState, uploadTeamsBatch, ProfAuth } from "./api";
+import { createRoom, joinRoom, API, ProfAuthType, generateCode, health, updateRoomState, getRoomState, uploadTeamsBatch, ProfAuth, deleteUserDB } from "./api";
 import React, {
   useEffect,
   useLayoutEffect,
@@ -5750,12 +5750,19 @@ function AdminDashboard({
       setNewProf({ name: "", user: "", pass: "" });
       alert("Profesor creado exitosamente.");
   };
-  const deleteProf = (id: string) => {
-      if (confirm("¿Eliminar este perfil de profesor?")) {
-          saveProfs(professors.filter(p => p.id !== id));
+const deleteProf = async (id: string) => {
+      if (confirm("¿Estás seguro de eliminar este usuario de la Base de Datos?")) {
+          try {
+             await deleteUserDB(id); 
+             
+             setProfessors(prev => prev.filter(p => String(p.id) !== String(id)));
+             
+             alert("Usuario eliminado correctamente.");
+          } catch (e) {
+             alert("Error al eliminar.");
+          }
       }
   };
-
   // --- HELPER SESIONES ---
   const getSessionTeams = (code: string) => {
       return analytics.teams.filter((t: any) => t.roomCode === code);

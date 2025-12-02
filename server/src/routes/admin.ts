@@ -113,5 +113,17 @@ export default function adminRouter(prisma: PrismaClient) {
     }
   });
 
+  // 6. ELIMINAR USUARIO (Ruta Nueva)
+  r.delete("/users/:id", async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      await prisma.usuario.delete({ where: { id } });
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: "No se pudo eliminar" });
+    }
+  });
+
+
   return r;
 }

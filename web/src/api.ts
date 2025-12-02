@@ -197,3 +197,8 @@ export async function uploadTeamsBatch(roomCode: string, teamsData: any[]) {
 export async function getAnalytics() {
   return request<any>("/admin/analytics", "GET");
 }
+
+// Al final del archivo
+export async function deleteUserDB(id: string) {
+  return request<any>(`/admin/users/${id}`, "DELETE");
+}
