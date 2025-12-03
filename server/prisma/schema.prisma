@@ -54,7 +54,7 @@ model Sala {
 }
 
 // 3. EQUIPOS
-model equipos {
+model Equipo {
   id                    Int      @id @default(autoincrement())
   nombre                String
   salaId                Int
