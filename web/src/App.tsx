@@ -2351,7 +2351,7 @@ function handleCreateRoom() {
     }
     
     const host = profAuth?.name || profAuth?.user || "Profesor";    
-    
+
     writeJSON(READY_KEY, []);
     try { window.dispatchEvent(new StorageEvent("storage", { key: READY_KEY, newValue: "[]" })); } catch {}
     writeJSON(COINS_KEY, {});
@@ -2837,12 +2837,12 @@ const saveChecklistConfig = (items: any[]) => {
               </div>
             </Card>
           ) : (
-            <Card
+<Card
               title="Acceso Administrador"
               subtitle="Ingresa tus credenciales"
               width={520}
             >
-              {/* Aquí va la lógica de login simple para Admin */}
+              {/* Lógica de login REAL conectada a la Base de Datos */}
                <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
                 <input
                     placeholder="Usuario (admin)"
@@ -2856,10 +2856,24 @@ const saveChecklistConfig = (items: any[]) => {
                     value={adminPass}
                     onChange={(e) => setAdminPass(e.target.value)}
                     style={baseInput}
-                    onKeyDown={(e) => {
+                    onKeyDown={async (e) => {
                         if (e.key === "Enter") {
-                           if (adminUser === 'admin' && adminPass === 'admin') setMode('admin');
-                           else setAdminErr("Credenciales incorrectas");
+                           setAdminErr(""); 
+                           try {
+                             const ok = await ProfAuth.login(adminUser, adminPass);
+                             if (ok) {
+                                const u = ProfAuth.getUser();
+                                if (u?.user === 'admin' || (u as any).esAdmin) {
+                                   setProfAuth(u);
+                                   setMode('admin');
+                                } else {
+                                   setAdminErr("No tienes permisos de administrador");
+                                   ProfAuth.logout();
+                                }
+                             } else {
+                                setAdminErr("Credenciales incorrectas");
+                             }
+                           } catch { setAdminErr("Error de conexión"); }
                         }
                     }}
                 />
@@ -2874,12 +2888,29 @@ const saveChecklistConfig = (items: any[]) => {
                         full={false}
                     />
                     <Btn
-                        onClick={() => {
-                           if (adminUser === 'admin' && adminPass === 'admin') setMode('admin');
-                           else setAdminErr("Credenciales incorrectas");
-                        }}
                         label="Ingresar"
                         full={false}
+                        onClick={async () => {
+                           setAdminErr(""); 
+                           try {
+                             // 1. Validar con el servidor
+                             const ok = await ProfAuth.login(adminUser, adminPass);
+                             
+                             if (ok) {
+                                // 2. Verificar rol
+                                const u = ProfAuth.getUser();
+                                if (u?.user === 'admin' || (u as any).esAdmin) {
+                                   setProfAuth(u); // Guardamos sesión
+                                   setMode('admin');
+                                } else {
+                                   setAdminErr("No tienes permisos de administrador");
+                                   ProfAuth.logout();
+                                }
+                             } else {
+                                setAdminErr("Credenciales incorrectas");
+                             }
+                           } catch { setAdminErr("Error de conexión"); }
+                        }}
                     />
                 </div>
               </div>
