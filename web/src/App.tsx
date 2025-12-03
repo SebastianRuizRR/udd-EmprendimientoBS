@@ -1247,21 +1247,27 @@ useEffect(() => {
       }
   }, [groupName, activeRoom]);
 
-useEffect(() => {
-    if (mode === "inicio" || mode === "alumno" || !profAuth?.id) return;
+  useEffect(() => {
+    if (mode === "inicio" || mode === "alumno") return;
 
     const securityCheck = setInterval(async () => {
-        try {
-            await fetch(`${API.baseUrl}/auth/verify`, {
-                headers: { "Authorization": `Bearer ${profAuth.id}` } 
-            }).then(res => {
+        if (profAuth?.id) {
+            try {
+                const res = await fetch(`${API.baseUrl}/auth/verify`, {
+                    headers: { "Authorization": `Bearer ${profAuth.id}` } 
+                });
+                
                 if (res.status === 401) {
-                    console.warn("Usuario no válido. Cerrando.");
-                    ProfAuth.logout();
+                    console.warn("Usuario eliminado de la DB. Cerrando sesión forzosamente.");
+                    setProfAuth(null); 
+                    setMode("inicio"); 
+                    localStorage.removeItem("udd_auth_prof"); 
+                    alert("Tu usuario ha sido eliminado. Sesión cerrada.");
                 }
-            });
-        } catch (e) { }
-    }, 5000);
+            } catch (e) { 
+            }
+        }
+    }, 3000); 
 
     return () => clearInterval(securityCheck);
   }, [mode, profAuth]);
@@ -2343,53 +2349,23 @@ function handleCreateRoom() {
       setShowProfLogin(true);
       return;
     }
-    const host = (miNombre || "").trim() || "Host";
+    
+    const host = profAuth?.name || profAuth?.user || "Profesor";    
     
     writeJSON(READY_KEY, []);
-    try {
-      window.dispatchEvent(
-        new StorageEvent("storage", {
-          key: READY_KEY,
-          newValue: JSON.stringify([]),
-        })
-      );
-    } catch {}
+    try { window.dispatchEvent(new StorageEvent("storage", { key: READY_KEY, newValue: "[]" })); } catch {}
     writeJSON(COINS_KEY, {});
-    try {
-      window.dispatchEvent(
-        new StorageEvent("storage", {
-          key: COINS_KEY,
-          newValue: JSON.stringify({}),
-        })
-      );
-    } catch {}
+    try { window.dispatchEvent(new StorageEvent("storage", { key: COINS_KEY, newValue: "{}" })); } catch {}
 
     let code = "";
     try {
-      const r = await fetch(`${API}/health`, { method: "GET" });
-      if (r.ok) {
-        const res = await createRoom(
-          { hostName: host },
-        );
+        const res = await createRoom({ hostName: host });
         code = res.roomCode;
-      } else {
-        code = generateCode(5);
-      }
-    } catch {
-      code = generateCode(5);
+    } catch (e) {
+        console.error(e);
+        alert("Error al conectar con el servidor para crear sala.");
+        return;
     }
-
-    const newSession = {
-        roomCode: code,
-        profId: profAuth.id || "unknown",
-        profName: profAuth.name || profAuth.user, 
-        timestamp: Date.now()
-    };
-    
-    // Leemos el historial actual y agregamos la nueva sesión
-    const sessions = readJSON("udd_sessions_log_v1", []);
-    writeJSON("udd_sessions_log_v1", [...sessions, newSession]);
-    // ----------------------------------------------------
 
     const expected = recommendedGroups.length
       ? Math.max(MIN_GROUPS, Math.min(recommendedGroups.length, MAX_GROUPS))
@@ -2406,9 +2382,11 @@ function handleCreateRoom() {
 
     setRoomCode(code);
     setJoinedRoom(code);
+    
     const url = new URL(window.location.href);
     url.searchParams.set("room", code);
     window.history.replaceState({}, "", url.toString());
+    
     update((a) => ({ ...a, roomsCreated: a.roomsCreated + 1 }));
   })();
 }
@@ -5748,8 +5726,7 @@ function AdminDashboard({
 
   useEffect(() => {
     if (tab === "resumen" || tab === "analitica") {
-        fetch(`${API.baseUrl}/admin/analytics`)
-            .then(res => res.json())
+        getAnalytics()
             .then(data => setStats(data))
             .catch(err => console.error("Error cargando stats", err));
     }
@@ -5773,12 +5750,13 @@ function AdminDashboard({
       if (!newProf.name || !newProf.user || !newProf.pass) return alert("Completa todos los campos");
       try {
           await createUserDB(newProf);
+          // Recargar lista
           const updated = await getUsersDB();
           setProfessors(updated);
           setNewProf({ name: "", user: "", pass: "" });
-          alert("Profesor creado exitosamente.");
+          alert("Usuario creado en Base de Datos.");
       } catch(e) {
-          alert("Error: El usuario ya existe.");
+          alert("Error: El usuario quizás ya existe.");
       }
   };
 
@@ -5799,7 +5777,7 @@ function AdminDashboard({
   };
 
   return (
-    <Card title="Panel de Administrador Maestro" subtitle="Gestión Global" width={1100}>
+    <Card title="Panel de Administrador Maestro" subtitle="Gestión Global (Base de Datos)" width={1100}>
       
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20, borderBottom:'1px solid #eee', paddingBottom:15 }}>
         {[
@@ -5838,7 +5816,7 @@ function AdminDashboard({
                <div style={{fontSize:32, fontWeight:900, color:theme.rosa}}>
                    {stats.rooms}
                </div>
-               <div style={{fontSize:12, color:'#666'}}>Sesiones Realizadas</div>
+               <div style={{fontSize:12, color:'#666'}}>Salas Creadas</div>
            </div>
            <div style={{...panelBox, textAlign:'center'}}>
                <div style={{fontSize:32, fontWeight:900, color:theme.verde}}>
@@ -5852,9 +5830,9 @@ function AdminDashboard({
       {tab === "profesores" && (
           <div style={{textAlign:'left'}}>
               <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
-                  {/* Lista */}
                   <div style={panelBox}>
-                      <h4 style={{marginTop:0}}>Listado de Docentes</h4>
+                      <h4 style={{marginTop:0}}>Usuarios en Base de Datos</h4>
+                      {professors.length === 0 && <div style={{opacity:0.5}}>Cargando o vacío...</div>}
                       <div style={{display:'grid', gap:8}}>
                           {professors.map(p => (
                               <div key={p.id} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:10, border:'1px solid #eee', borderRadius:8}}>
@@ -5871,18 +5849,22 @@ function AdminDashboard({
                   </div>
 
                   <div style={{...panelBox, height:'fit-content'}}>
-                      <h4 style={{marginTop:0, color:theme.azul}}>Registrar Nuevo Profesor</h4>
+                      <h4 style={{marginTop:0, color:theme.azul}}>Registrar Nuevo</h4>
                       <div style={{display:'grid', gap:10}}>
-                          <input placeholder="Nombre Completo" value={newProf.name} onChange={e=>setNewProf({...newProf, name:e.target.value})} style={baseInput} />
+                          <input placeholder="Nombre" value={newProf.name} onChange={e=>setNewProf({...newProf, name:e.target.value})} style={baseInput} />
                           <input placeholder="Usuario" value={newProf.user} onChange={e=>setNewProf({...newProf, user:e.target.value})} style={baseInput} />
                           <input placeholder="Contraseña" value={newProf.pass} onChange={e=>setNewProf({...newProf, pass:e.target.value})} style={baseInput} />
-                          <Btn label="Crear Cuenta" onClick={addProf} />
+                          <div style={{display:'flex', alignItems:'center', gap:8}}>
+                             <input type="checkbox" id="isAdmin" onChange={e => setNewProf({...newProf, isAdmin: e.target.checked} as any)} />
+                             <label htmlFor="isAdmin" style={{fontSize:13}}>Es Administrador</label>
+                          </div>
+                          <Btn label="Guardar en DB" onClick={addProf} />
                       </div>
                   </div>
               </div>
           </div>
       )}
-
+      
       {tab === "sesiones" && (
           <div style={{padding: 20, textAlign:'center', color:'#666'}}>
              Próximamente: Historial detallado de sesiones desde la base de datos.

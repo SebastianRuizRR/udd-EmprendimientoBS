@@ -1,110 +1,88 @@
 import React, { useState } from "react";
-import { ProfAuth, ProfAuthType } from "../api"; 
+import { ProfAuth, ProfAuthType } from "../api"; // Usamos la API real
 
 type Props = {
   onSuccess: (auth: ProfAuthType) => void;
   onCancel: () => void;
 };
 
-const theme = {
-  azul: "#1976D2",
-  rosa: "#E91E63",
-  amarillo: "#FFEB3B",
-  texto: "#0D47A1",
-  border: "#E3E8EF",
-  blanco: "#FFFFFF",
-  shadow: "0 16px 36px rgba(16,24,40,.14)",
-};
-
-const baseInput: React.CSSProperties = {
-  width: "100%",
-  padding: 12,
-  borderRadius: 12,
-  border: `1px solid ${theme.border}`,
-  boxSizing: "border-box",
-  maxWidth: "100%",
-  background: theme.blanco,
-  marginBottom: 10
-};
-
 export default function LoginProfesor({ onSuccess, onCancel }: Props) {
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
-  const [err, setErr] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
-      if (!user || !pass) {
-          setErr("Completa todos los campos");
-          return;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      // 1. Intentar Login con la API (Base de Datos)
+      const ok = await ProfAuth.login(user, pass);
+      
+      if (ok) {
+        // 2. Si la API dice SI, recuperamos los datos y entramos
+        const authData = ProfAuth.getUser();
+        if (authData) {
+            onSuccess(authData);
+        } else {
+            setError("Error al recuperar datos de sesión.");
+        }
+      } else {
+        // 3. Si la API dice NO, mostramos error
+        setError("Credenciales incorrectas (Base de Datos)");
       }
-      // La validación real ocurre en App.tsx
-      onSuccess({ user, pass });
+    } catch (err) {
+      console.error(err);
+      setError("Error de conexión con el servidor.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div
-      style={{
-        width: "clamp(300px,90vw,480px)",
-        background: "rgba(255,255,255,0.98)",
-        boxShadow: theme.shadow,
-        border: `1px solid ${theme.border}`,
-        borderRadius: 20,
-        padding: 30,
-        textAlign: "center",
-        position: "relative",
-        zIndex: 3,
-        margin: "12px auto",
-      }}
-    >
-      <h2 style={{ margin: "0 0 8px", fontSize: 24, fontWeight: 900, color: theme.rosa }}>
-        Acceso Docente
-      </h2>
-      <p style={{ margin: "0 0 24px", color: theme.texto, opacity: 0.8 }}>Ingresa tus credenciales para gestionar la sala.</p>
-
-      <div style={{ textAlign: "left" }}>
-        <label style={{fontSize:12, fontWeight:700, color:'#666', marginLeft:4}}>USUARIO</label>
+    <div style={{ background: "#fff", padding: 24, borderRadius: 16, boxShadow: "0 10px 30px rgba(0,0,0,0.2)" }}>
+      <h2 style={{ marginTop: 0, color: "#1976D2", textAlign: "center" }}>Iniciar Sesión</h2>
+      <p style={{ textAlign: "center", color: "#666", fontSize: 14, marginBottom: 20 }}>
+        Ingresa tus credenciales de profesor o administrador.
+      </p>
+      
+      <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
         <input
-          placeholder="ej: prof.garcia"
+          autoFocus
+          placeholder="Usuario"
           value={user}
           onChange={(e) => setUser(e.target.value)}
-          style={baseInput}
+          style={{ padding: 12, borderRadius: 8, border: "1px solid #ccc", width: "100%", boxSizing: "border-box" }}
         />
-        
-        <label style={{fontSize:12, fontWeight:700, color:'#666', marginLeft:4}}>CONTRASEÑA</label>
         <input
-          placeholder="••••••"
           type="password"
+          placeholder="Contraseña"
           value={pass}
           onChange={(e) => setPass(e.target.value)}
-          style={baseInput}
-          onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+          style={{ padding: 12, borderRadius: 8, border: "1px solid #ccc", width: "100%", boxSizing: "border-box" }}
         />
         
-        {err && <div style={{ color: "#D32F2F", fontWeight: 700, fontSize: 13, marginTop: 5, textAlign:'center' }}>{err}</div>}
-
-        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 24 }}>
+        {error && <div style={{ color: "red", fontSize: 13, fontWeight: "bold", textAlign: "center" }}>{error}</div>}
+        
+        <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
           <button
+            type="button"
             onClick={onCancel}
-            style={{
-              padding: "12px 20px", borderRadius: 14, border: "none",
-              background: theme.amarillo, color: theme.texto, fontWeight: 800, cursor: "pointer",
-            }}
+            style={{ flex: 1, padding: 12, borderRadius: 8, border: "none", background: "#ECEFF1", color: "#333", fontWeight: "bold", cursor: "pointer" }}
           >
-            ⬅ Volver
+            Cancelar
           </button>
-
           <button
-            onClick={handleLogin}
-            style={{
-              padding: "12px 24px", borderRadius: 14, border: "none",
-              background: theme.azul, color: theme.blanco, fontWeight: 800, cursor: "pointer",
-              boxShadow: "0 4px 12px rgba(25,118,210,.2)"
-            }}
+            type="submit"
+            disabled={loading}
+            style={{ flex: 1, padding: 12, borderRadius: 8, border: "none", background: "#1976D2", color: "#fff", fontWeight: "bold", cursor: loading ? "wait" : "pointer", opacity: loading ? 0.7 : 1 }}
           >
-            Ingresar
+            {loading ? "Verificando..." : "Entrar"}
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
