@@ -1602,17 +1602,19 @@ const goPrevStep = React.useCallback(() => {
           formation: serverState.formation // <--- CLAVE PARA EL CAMBIO DE VISTA
         }));
 
-        // 2. Actualizamos equipos (Esto hace que aparezca el equipo en la pantalla del profe)
         if (serverState.equipos) {
            update(prevAnalytics => {
               const otros = prevAnalytics.teams.filter(t => t.roomCode !== syncRoomCode);
+              
               const nuevos = serverState.equipos.map((e: any) => ({
-                 id: e.id, 
+                 id: e.id,               
+                 listo: e.listo,       
                  roomCode: syncRoomCode,
                  teamName: e.teamName, 
                  integrantes: e.integrantes,
                  ts: Date.now()
               }));
+              
               return { ...prevAnalytics, teams: [...otros, ...nuevos] };
            });
         }
