@@ -1,11 +1,10 @@
-// server/src/routes/salas.ts (Versión Final Corregida y Optimizada)
+// server/src/routes/salas.ts (VERSION DEFINITIVA "CONTADOR OK")
 
 import { PrismaClient, Sala } from "@prisma/client";
 import { Router, Request, Response, NextFunction } from "express"; 
 import type { CustomRequest } from "../types.d.ts"; 
 import { z } from "zod";
 
-/* Validación de cuerpos */
 const cuerpoCrearSala = z.object({
   anfitrion: z.string().min(1, "El nombre del anfitrión es obligatorio"),
 });
@@ -16,7 +15,6 @@ const cuerpoUnirseSala = z.object({
   equipoNombre: z.string().optional().nullable() 
 });
 
-// Nuevo esquema para carga masiva (Excel)
 const cuerpoCargaMasiva = z.object({
   equipos: z.array(z.object({
     nombre: z.string(),
@@ -27,43 +25,36 @@ const cuerpoCargaMasiva = z.object({
   }))
 });
 
-// Esquema para actualizar el estado del juego (Incluye 'formacion' y 'datosJuego')
 const cuerpoActualizarEstado = z.object({
     faseActual: z.string().optional(),
     segundosRestantes: z.number().optional(),
     timerCorriendo: z.boolean().optional(),
     formacion: z.string().optional(), 
     estado: z.string().optional(),
-    // IMPORTANTE: Permitimos datosJuego para la ruleta
     datosJuego: z.any().optional() 
-}).partial(); // Quitamos .strict() para permitir flexibilidad o usamos partial
+}).partial();
 
 export default function salasRouter(prisma: PrismaClient) {
   const r = Router();
   
-  // Middleware: Encuentra sala y la adjunta (con casting interno)
   const findSalaMiddleware = async (req: Request, res: Response, next: NextFunction) => {
     const codigoParam = String(req.params.codigo || "").toUpperCase();
     const sala: Sala | null = await prisma.sala.findUnique({ where: { codigo: codigoParam } });
     
     if (!sala) return res.status(404).json({ error: "Sala no encontrada" });
     
-    // Casting para asignar al request
     (req as CustomRequest).sala = sala;
     next();
   };
 
-  /* POST /salas -> Crea sala y usuario */
+  /* POST /salas */
   r.post("/", async (req: Request, res: Response) => { 
     const parse = cuerpoCrearSala.safeParse(req.body);
-    if (!parse.success) {
-      return res.status(400).json({ error: "Cuerpo inválido", detalle: parse.error.flatten() });
-    }
+    if (!parse.success) return res.status(400).json({ error: "Datos inválidos" });
 
     const nombreAnfitrion = parse.data.anfitrion;
     const usernameGen = nombreAnfitrion.toLowerCase().replace(/\s+/g, '.');
 
-    // Upsert para no fallar si el profe ya existe
     const anfitrion = await prisma.usuario.upsert({
         where: { username: usernameGen },
         update: {},
@@ -78,7 +69,6 @@ export default function salasRouter(prisma: PrismaClient) {
     const alfabeto = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let codigo = "";
     let existe = true;
-    
     while(existe) {
         codigo = Array.from({ length: 5 }, () => alfabeto[Math.floor(Math.random() * alfabeto.length)]).join("");
         const check = await prisma.sala.findUnique({ where: { codigo }});
@@ -86,29 +76,33 @@ export default function salasRouter(prisma: PrismaClient) {
     }
 
     const sala = await prisma.sala.create({
-      data: { 
-          codigo, 
-          anfitrionId: anfitrion.id,
-      }
+      data: { codigo, anfitrionId: anfitrion.id }
     });
 
     res.json({ codigoSala: sala.codigo });
   });
 
-  /* POST /salas/:codigo/unirse -> Alumnos (Individual) */
+  /* POST /unirse -> CORREGIDO (VALIDA NOMBRE Y MARCA LISTO) */
   r.post("/:codigo/unirse", findSalaMiddleware, async (req: Request, res: Response) => {
     const customReq = req as CustomRequest; 
-    const sala = customReq.sala; 
-    
     const parse = cuerpoUnirseSala.safeParse(req.body);
     if (!parse.success) return res.status(400).json({ error: "Datos inválidos" });
 
-    const nombreEquipo = (parse.data.equipoNombre?.trim() || "Equipo Temporal");
+    const nombreEquipo = parse.data.equipoNombre?.trim();
+    
+    // VALIDA QUE TENGA NOMBRE (Adiós "Equipo Temporal")
+    if (!nombreEquipo) {
+        return res.status(400).json({ error: "El nombre del equipo es obligatorio." });
+    }
 
     const equipo = await prisma.equipo.upsert({
-      where: { salaId_nombre: { salaId: sala.id, nombre: nombreEquipo } },
+      where: { salaId_nombre: { salaId: customReq.sala.id, nombre: nombreEquipo } },
       update: {},
-      create: { nombre: nombreEquipo, salaId: sala.id }
+      create: { 
+          nombre: nombreEquipo, 
+          salaId: customReq.sala.id,
+          listo: true // <--- ¡AQUÍ ESTÁ LA CLAVE! Nace listo si es manual.
+      }
     });
 
     await prisma.integrante.create({
@@ -122,62 +116,49 @@ export default function salasRouter(prisma: PrismaClient) {
     res.json({ ok: true, equipo: equipo.nombre, equipoId: equipo.id });
   });
 
-  /* POST /salas/:codigo/masivo -> Carga Equipos desde Excel (Optimizado) */
+  /* POST /masivo -> CORREGIDO (MARCA AUTO) */
   r.post("/:codigo/masivo", findSalaMiddleware, async (req: Request, res: Response) => {
       const customReq = req as CustomRequest;
-      const sala = customReq.sala;
-      
       const parse = cuerpoCargaMasiva.safeParse(req.body);
       if (!parse.success) return res.status(400).json({ error: "Datos inválidos" });
 
-      // Transacción para velocidad y consistencia
       await prisma.$transaction(async (tx) => {
-          // 1. Borramos equipos anteriores para limpiar (opcional, según tu lógica)
-          // Si prefieres no borrar, comenta la línea deleteMany
-          // await tx.equipo.deleteMany({ where: { salaId: sala.id } });
+          await tx.equipo.deleteMany({ where: { salaId: customReq.sala.id } });
 
           for (const eq of parse.data.equipos) {
-              // Crear equipo
-              const nuevoEquipo = await tx.equipo.create({
+              const ne = await tx.equipo.create({
                   data: {
                       nombre: eq.nombre,
-                      salaId: sala.id
+                      salaId: customReq.sala.id,
+                      listo: false // <--- Nace NO listo (espera confirmación)
                   }
               });
               
-              // Crear sus integrantes en lote
               if (eq.integrantes.length > 0) {
                   await tx.integrante.createMany({
                       data: eq.integrantes.map(i => ({
                           nombre: i.nombre,
                           carrera: i.carrera,
-                          equipoId: nuevoEquipo.id
+                          equipoId: ne.id
                       }))
                   });
               }
           }
 
-          // 2. ¡IMPORTANTE! Forzamos la sala a modo "auto" para que alumnos vean la lista
           await tx.sala.update({
-              where: { id: sala.id },
-              data: { formacion: "auto" }
+              where: { id: customReq.sala.id },
+              data: { formacion: "auto" } // <--- Fuerza modo AUTO
           });
       });
 
       res.json({ ok: true });
   });
 
-  /* GET /salas/:codigo/estado -> Polling completo (Estado + Equipos + datosJuego) */
+  /* GET /estado -> CORREGIDO (DEVUELVE 'listo') */
   r.get("/:codigo/estado", findSalaMiddleware, async (req: Request, res: Response) => {
-    const customReq = req as CustomRequest; 
-    
     const salaFull = await prisma.sala.findUnique({
-        where: { id: customReq.sala.id },
-        include: { 
-            equipos: {
-                include: { integrantes: true }
-            }
-        }
+        where: { id: (req as CustomRequest).sala.id },
+        include: { equipos: { include: { integrantes: true } } }
     });
 
     if (!salaFull) return res.status(404).json({ error: "Sala no encontrada" });
@@ -187,13 +168,13 @@ export default function salasRouter(prisma: PrismaClient) {
         segundosRestantes: salaFull.segundosRestantes,
         timerCorriendo: salaFull.timerCorriendo,
         roomCode: salaFull.codigo,
-        // CORRECCIÓN: 'formacion' en español para el frontend
         formacion: salaFull.formacion, 
         datosJuego: salaFull.datosJuego, 
         
         equipos: salaFull.equipos.map(e => ({
             id: e.id,                
             nombre: e.nombre,
+            listo: e.listo, // <--- ¡ESTO FALTABA PARA EL CONTADOR!
             puntos: e.puntos,        
             foto: e.fotoLegoUrl,     
             desafioId: e.desafioId,
@@ -202,34 +183,23 @@ export default function salasRouter(prisma: PrismaClient) {
     });
   });
 
-  /* PATCH /salas/:codigo/estado -> Actualiza estado (Profesor) */
+  /* PATCH /estado */
   r.patch("/:codigo/estado", findSalaMiddleware, async (req: Request, res: Response) => {
-    const customReq = req as CustomRequest;
-    const sala = customReq.sala;
-    
     const parse = cuerpoActualizarEstado.safeParse(req.body);
-    if (!parse.success) return res.status(400).json({ error: "Cuerpo inválido", detalle: parse.error.flatten() });
+    if (!parse.success) return res.status(400).json({ error: "Datos inválidos" });
 
     const dataToUpdate: any = { ...parse.data };
-    
-    // Si viene datosJuego, aseguramos que se guarde como JSON
-    if (dataToUpdate.datosJuego) {
-        dataToUpdate.datosJuego = dataToUpdate.datosJuego;
-    }
+    if (dataToUpdate.datosJuego) dataToUpdate.datosJuego = dataToUpdate.datosJuego;
 
-    const updatedSala = await prisma.sala.update({
-        where: { id: sala.id },
+    const updated = await prisma.sala.update({
+        where: { id: (req as CustomRequest).sala.id },
         data: dataToUpdate,
     });
 
     res.json({
-        faseActual: updatedSala.faseActual,
-        segundosRestantes: updatedSala.segundosRestantes,
-        timerCorriendo: updatedSala.timerCorriendo,
-        roomCode: updatedSala.codigo,
-        // CORRECCIÓN: 'formacion' en español
-        formacion: updatedSala.formacion, 
-        datosJuego: updatedSala.datosJuego, 
+        faseActual: updated.faseActual,
+        formacion: updated.formacion, 
+        datosJuego: updated.datosJuego, 
     });
   });
 

@@ -74,11 +74,10 @@ export const ProfAuth = {
         const data = await res.json();
         
         // --- CORRECCIÓN CRÍTICA: Guardar datos planos ---
-        // Extraemos los datos útiles de la respuesta del servidor
         const authData: ProfAuthType = {
             user: data.user.username,
-            pass: pass, // Opcional
-            id: String(data.user.id), // Vital para el header x-user-id
+            pass: pass,
+            id: String(data.user.id), 
             name: data.user.nombre
         };
 
@@ -123,6 +122,12 @@ export async function joinRoom(roomCode: string, student: any) {
   });
 }
 
+// 🔥 FUNCIÓN FALTANTE: MARCAR EQUIPO COMO LISTO (Corresponde a PATCH /equipos/:id/ready)
+export async function setTeamReadyDB(equipoId: number) {
+  return request<any>(`/equipos/${equipoId}/ready`, "PATCH", {});
+}
+// -------------------------------------------------------------------------------------
+
 export async function getRoomState(roomCode: string) {
   try {
     const data = await request<any>(`/salas/${roomCode}/estado`, "GET");
@@ -135,7 +140,9 @@ export async function getRoomState(roomCode: string) {
       equipos: Array.isArray(data.equipos) ? data.equipos.map((e: any) => ({
          teamName: e.nombre,
          integrantes: e.integrantes || [],
-         roomCode: roomCode
+         roomCode: roomCode,
+         listo: !!e.listo, // Necesario para el contador del profesor
+         id: e.id // Necesario para llamar a setTeamReadyDB
       })) : [],
       wheel: data.datosJuego?.wheel,
       presentOrder: data.datosJuego?.presentOrder || []
@@ -196,8 +203,7 @@ export async function getAnalytics() {
   return request<any>("/admin/analytics", "GET");
 }
 
-// Al final del archivo
-// web/src/api.ts (Agrega esto al final)
+
 
 // --- GESTIÓN DE USUARIOS ---
 export async function getUsersDB() {

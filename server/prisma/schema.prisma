@@ -54,7 +54,7 @@ model Sala {
 }
 
 // 3. EQUIPOS
-model Equipo {
+model equipos {
   id                    Int      @id @default(autoincrement())
   nombre                String
   salaId                Int
@@ -64,11 +64,9 @@ model Equipo {
   
   desafioId             Int?    
   desafio               Desafio? @relation(fields: [desafioId], references: [id])
-  
-  // CORRECCIÓN: Text para JSONs largos
+  listo                 Boolean  @default(false) // <--- AGREGAR ESTE CAMPO NUEVO
   mapaEmpatia           String?  @db.Text 
 
-  // CORRECCIÓN CRÍTICA: LongText para las fotos Base64
   fotoLegoUrl           String?  @db.LongText 
   
   feedbackData          String?  @db.Text
