@@ -693,12 +693,12 @@ type Analytics = {
   roomsCreated: number;
   challengeUsage: Record<string, number>;
   teams: {
-    id?: number; 
+    id?: number;          
+    listo?: boolean;      
     roomCode: string;
     teamName: string;
     integrantes: { nombre: string; carrera: string }[];
     ts: number;
-    
   }[];
   reflections: {
     roomCode: string;
@@ -4408,7 +4408,7 @@ if (mode === "alumno") {
                       <label style={badgeTitle}>Nombre del Equipo</label>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10 }}>
                         <input 
-                            placeholder="Ej: Los Innovadoreskjjejejejeje"
+                            placeholder="Ej: Los Innovadores"
                             value={groupName}
                             onChange={e => setGroupName(e.target.value)}
                             style={baseInput}
