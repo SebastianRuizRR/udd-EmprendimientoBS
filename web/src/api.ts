@@ -4,7 +4,7 @@ import {
 } from "./api"; 
 
 
-const CLOUD_URL = (import.meta as any).env?.VITE_API_URL || "http://18.191.239.111:4001";
+const CLOUD_URL = (import.meta as any).env?.VITE_API_URL || "http://3.139.79.95:4001";
 const BASE_URL = CLOUD_URL; 
 
 
