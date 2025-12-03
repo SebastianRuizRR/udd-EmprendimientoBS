@@ -4408,7 +4408,7 @@ if (mode === "alumno") {
                       <label style={badgeTitle}>Nombre del Equipo</label>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10 }}>
                         <input 
-                            placeholder="Ej: Los Innovadores"
+                            placeholder="Ej: Los Innovadoreskjjejejejeje"
                             value={groupName}
                             onChange={e => setGroupName(e.target.value)}
                             style={baseInput}
