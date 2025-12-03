@@ -211,3 +211,7 @@ export async function getUsersDB() { return request<any[]>("/admin/users", "GET"
 export async function deleteUserDB(id: string) { return request<any>(`/admin/users/${id}`, "DELETE"); }
 export async function createUserDB(data: any) { return request<any>("/admin/users", "POST", data); }
 export async function getAnalytics() { return request<any>("/admin/analytics", "GET"); }
+
+export function getSessionsDB() {
+  return request<any[]>("/admin/sessions", "GET");
+}

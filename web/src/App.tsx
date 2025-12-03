@@ -15,7 +15,7 @@ import {
   submitPeerEvaluation, 
   getTeamIdByName,
   setTeamReadyDB,
-
+  getSessionsDB,
   // Carga Masiva (Excel)
   uploadTeamsBatch,
   // Configuración Admin (Base de Datos)
@@ -3715,7 +3715,6 @@ const [checklistConfig, setChecklistConfig] = useState<any[]>(DEFAULT_CHECKLIST)
             </>
           )}
 
-          {/* ===== PROFESOR: paso f2_theme ===== */}
 {/* ===== PROFESOR: paso f2_theme ===== */}
           {flow.step === "f2_theme" && (
             <>
@@ -4484,32 +4483,43 @@ if (mode === "alumno") {
   full={false} 
 />
                     
-                    <Btn 
-                      label="✅ Confirmar Equipo" 
+ <Btn 
+                      label="Crear Equipo y Entrar" 
                       full={false} 
                       onClick={async () => {
+                          // 1. Validaciones básicas
                           if(!groupName.trim()) return alert("Falta nombre del equipo");
                           const clean = integrantes.filter(x => x.nombre.trim());
                           if(clean.length === 0) return alert("Agrega al menos un integrante");
 
                           try {
                               let teamId = 0;
-                              // ENVIAR TODOS LOS INTEGRANTES
+                              // 2. Crear/Unir a cada integrante (Bucle)
                               for (const p of clean) {
                                   const res: any = await joinRoom(activeRoom, {
                                       name: p.nombre,
                                       career: p.carrera,
                                       equipoNombre: groupName
                                   });
+                                  // Guardamos el ID del equipo si nos lo devuelve
                                   if (res.equipoId) teamId = res.equipoId;
                               }
                               
+                              // 3. 🔥 CONFIRMAR AL SERVIDOR QUE ESTÁN LISTOS
                               if (teamId) {
                                   await setTeamReadyDB(teamId);
+                              } else {
+                                  // Fallback de emergencia si no capturamos el ID antes
+                                  const state = await getRoomState(activeRoom);
+                                  const t = state?.equipos?.find((e: any) => e.teamName === groupName);
+                                  if (t?.id) await setTeamReadyDB(t.id);
                               }
                               
+                              // 4. Éxito local
                               setTeamReady(true);
-                          } catch(e: any) { alert("Error: " + e.message); }
+                          } catch(e: any) { 
+                              alert("Error: " + (e.message || "Error al crear equipo")); 
+                          }
                       }} 
                     />
                   </div>
@@ -5723,47 +5733,42 @@ const SESSIONS_KEY = "udd_sessions_log_v1";
 
 function AdminDashboard({
   analytics, THEMES, setTHEMES, flow, onBack, ranking, clearMetrics, activeRoom, publish,
-  rouletteConfig, saveRouletteConfig,
-  checklistConfig, saveChecklistConfig
+  rouletteConfig, saveRouletteConfig, checklistConfig, saveChecklistConfig
 }: any) {
   const [tab, setTab] = useState<"resumen" | "profesores" | "sesiones" | "temas" | "ruleta" | "checklist" | "analitica">("resumen");
-
   const [stats, setStats] = useState({ users: 0, rooms: 0, teams: 0, challenges: {} });
 
+  // Estados de Datos
+  const [professors, setProfessors] = useState<any[]>([]); 
+  const [newProf, setNewProf] = useState({ name: "", user: "", pass: "" });
+  const [sessions, setSessions] = useState<any[]>([]); // Estado para sesiones
+
+  // --- EFECTO UNIFICADO DE CARGA ---
   useEffect(() => {
+    // Cargar Stats
     if (tab === "resumen" || tab === "analitica") {
-        getAnalytics()
-            .then(data => setStats(data))
-            .catch(err => console.error("Error cargando stats", err));
+        getAnalytics().then(setStats).catch(console.error);
+    }
+    // Cargar Profesores
+    if (tab === "profesores") {
+        getUsersDB().then(setProfessors).catch(console.error);
+    }
+    // 🔥 CARGAR SESIONES REALES
+    if (tab === "sesiones") {
+        getSessionsDB().then(setSessions).catch(console.error);
     }
   }, [tab]);
 
-  const [professors, setProfessors] = useState<any[]>([]); 
-  const [newProf, setNewProf] = useState({ name: "", user: "", pass: "" });
-
-  const [sessions, setSessions] = useState<any[]>([]); 
-  const [selectedSession, setSelectedSession] = useState<any>(null);
-
-  useEffect(() => {
-      if (tab === "profesores") {
-          getUsersDB()
-            .then(data => setProfessors(data))
-            .catch(e => console.error("Error cargando profesores:", e));
-      }
-  }, [tab]);
-
+  // Funciones de Profesores
   const addProf = async () => {
       if (!newProf.name || !newProf.user || !newProf.pass) return alert("Completa todos los campos");
       try {
           await createUserDB(newProf);
-          // Recargar lista
           const updated = await getUsersDB();
           setProfessors(updated);
           setNewProf({ name: "", user: "", pass: "" });
-          alert("Usuario creado en Base de Datos.");
-      } catch(e) {
-          alert("Error: El usuario quizás ya existe.");
-      }
+          alert("Profesor creado exitosamente.");
+      } catch(e) { alert("Error: El usuario ya existe."); }
   };
 
   const deleteProf = async (id: string) => {
@@ -5772,24 +5777,18 @@ function AdminDashboard({
              await deleteUserDB(id); 
              setProfessors(prev => prev.filter(p => String(p.id) !== String(id)));
              alert("Usuario eliminado correctamente.");
-          } catch (e) {
-             alert("Error al eliminar.");
-          }
+          } catch (e) { alert("Error al eliminar."); }
       }
   };
 
-  const getSessionTeams = (code: string) => {
-      return analytics.teams.filter((t: any) => t.roomCode === code);
-  };
-
   return (
-    <Card title="Panel de Administrador Maestro" subtitle="Gestión Global (Base de Datos)" width={1100}>
-      
+    <Card title="Panel de Administrador Maestro" subtitle="Gestión Global" width={1100}>
+      {/* MENU */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20, borderBottom:'1px solid #eee', paddingBottom:15 }}>
         {[
             ["resumen", "📊 Resumen"],
             ["profesores", "👨‍🏫 Profesores"],
-            ["sesiones", "📅 Historial Sesiones"],
+            ["sesiones", "📅 Historial"],
             ["temas", "🎯 Contenido"],
             ["ruleta", "🎡 Ruleta"],
             ["checklist", "✅ Checklist"],
@@ -5810,25 +5809,20 @@ function AdminDashboard({
         </div>
       </div>
 
+      {/* PESTAÑAS */}
       {tab === "resumen" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 15 }}>
            <div style={{...panelBox, textAlign:'center'}}>
-               <div style={{fontSize:32, fontWeight:900, color:theme.azul}}>
-                   {stats.users}
-               </div>
+               <div style={{fontSize:32, fontWeight:900, color:theme.azul}}>{stats.users}</div>
                <div style={{fontSize:12, color:'#666'}}>Usuarios Registrados</div>
            </div>
            <div style={{...panelBox, textAlign:'center'}}>
-               <div style={{fontSize:32, fontWeight:900, color:theme.rosa}}>
-                   {stats.rooms}
-               </div>
+               <div style={{fontSize:32, fontWeight:900, color:theme.rosa}}>{stats.rooms}</div>
                <div style={{fontSize:12, color:'#666'}}>Salas Creadas</div>
            </div>
            <div style={{...panelBox, textAlign:'center'}}>
-               <div style={{fontSize:32, fontWeight:900, color:theme.verde}}>
-                   {stats.teams}
-               </div>
-               <div style={{fontSize:12, color:'#666'}}>Equipos Totales Históricos</div>
+               <div style={{fontSize:32, fontWeight:900, color:theme.verde}}>{stats.teams}</div>
+               <div style={{fontSize:12, color:'#666'}}>Equipos Totales</div>
            </div>
         </div>
       )}
@@ -5837,9 +5831,8 @@ function AdminDashboard({
           <div style={{textAlign:'left'}}>
               <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
                   <div style={panelBox}>
-                      <h4 style={{marginTop:0}}>Usuarios en Base de Datos</h4>
-                      {professors.length === 0 && <div style={{opacity:0.5}}>Cargando o vacío...</div>}
-                      <div style={{display:'grid', gap:8}}>
+                      <h4 style={{marginTop:0}}>Listado de Docentes</h4>
+                      <div style={{display:'grid', gap:8, maxHeight:300, overflowY:'auto'}}>
                           {professors.map(p => (
                               <div key={p.id} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:10, border:'1px solid #eee', borderRadius:8}}>
                                   <div>
@@ -5853,7 +5846,6 @@ function AdminDashboard({
                           ))}
                       </div>
                   </div>
-
                   <div style={{...panelBox, height:'fit-content'}}>
                       <h4 style={{marginTop:0, color:theme.azul}}>Registrar Nuevo</h4>
                       <div style={{display:'grid', gap:10}}>
@@ -5870,23 +5862,36 @@ function AdminDashboard({
               </div>
           </div>
       )}
-      
+
+      {/* 🔥 PESTAÑA SESIONES REALES */}
       {tab === "sesiones" && (
-          <div style={{padding: 20, textAlign:'center', color:'#666'}}>
-             Próximamente: Historial detallado de sesiones desde la base de datos.
-             <br/>(Total actual: {stats.rooms})
+          <div style={{textAlign:'left'}}>
+              <div style={panelBox}>
+                  <h4 style={{marginTop:0}}>Historial de Partidas ({sessions.length})</h4>
+                  <div style={{maxHeight:400, overflowY:'auto', display:'grid', gap:8}}>
+                      {sessions.map((s, i) => (
+                          <div key={i} style={{padding:12, border: '1px solid #eee', borderRadius:8, background: '#f9f9f9'}}>
+                              <div style={{display:'flex', justifyContent:'space-between', fontWeight:700}}>
+                                  <span>Sala: <span style={{color: theme.azul}}>{s.roomCode}</span></span>
+                                  <span style={{fontSize:12, color:'#666'}}>
+                                     {new Date(s.timestamp).toLocaleDateString()} {new Date(s.timestamp).toLocaleTimeString()}
+                                  </span>
+                              </div>
+                              <div style={{fontSize:13, marginTop:4}}>
+                                  Profesor: <b>{s.profName}</b> | Equipos: <b>{s.equiposCount}</b> | Estado: <b>{s.estado}</b>
+                              </div>
+                          </div>
+                      ))}
+                      {sessions.length === 0 && <div style={{padding:20, textAlign:'center', opacity:0.6}}>No hay sesiones registradas.</div>}
+                  </div>
+              </div>
           </div>
       )}
 
       {tab === "temas" && <ThemeEditor THEMES={THEMES} setTHEMES={setTHEMES} flow={flow} publish={publish} />}
       {tab === "ruleta" && <RouletteEditor items={rouletteConfig} setItems={saveRouletteConfig} maxSpins={0} setMaxSpins={()=>{}} />}
       {tab === "checklist" && <ChecklistEditor items={checklistConfig} setItems={saveChecklistConfig} />}
-      
-      {tab === "analitica" && (
-        <AdminAnalytics 
-            realData={stats} 
-        />
-      )}
+      {tab === "analitica" && <AdminAnalytics realData={stats} />}
     </Card>
   );
 }
