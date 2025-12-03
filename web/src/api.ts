@@ -85,10 +85,19 @@ export async function getRoomState(roomCode: string) {
       f0Seconds: data.t_rompehielo, f1Seconds: data.t_diferencias, f2Seconds: data.t_empatia,
       f3Seconds: data.t_creatividad, f4PrepSeconds: data.t_pitch_prep, pitchSeconds: data.t_pitch_fuego,
 
+      // ...
       equipos: Array.isArray(data.equipos) ? data.equipos.map((e: any) => ({
-         id: e.id, listo: !!e.listo, puntos: e.puntos || 0, fotoLegoUrl: e.foto, desafioId: e.desafioId,
-         roomCode: roomCode, teamName: e.nombre, integrantes: e.integrantes || []
+         id: e.id,
+         listo: !!e.listo,
+         puntos: e.puntos || 0,
+         fotoLegoUrl: e.foto, 
+         desafioId: e.desafioId,
+         feedbackData: e.feedbackData,
+         roomCode: roomCode,
+         teamName: e.teamName, 
+         integrantes: e.integrantes || []
       })) : [],
+// ...
       wheel: data.datosJuego?.wheel, presentOrder: data.datosJuego?.presentOrder || []
     };
   } catch { return null; }

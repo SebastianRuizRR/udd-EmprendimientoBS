@@ -113,10 +113,16 @@ export default function salasRouter(prisma: PrismaClient) {
         t_pitch_prep: salaFull.t_pitch_prep,
         t_pitch_fuego: salaFull.t_pitch_fuego,
 
-        equipos: salaFull.equipos.map(e => ({
-            id: e.id, nombre: e.nombre, listo: e.listo, puntos: e.puntos, foto: e.fotoLegoUrl, desafioId: e.desafioId,
-            integrantes: e.integrantes.map(i => ({ nombre: i.nombre, carrera: i.carrera || "" }))
-        }))
+  equipos: salaFull.equipos.map(e => ({
+      id: e.id,                
+      nombre: e.nombre,
+      listo: e.listo,
+      puntos: e.puntos,        
+      foto: e.fotoLegoUrl,     
+      desafioId: e.desafioId,
+      feedbackData: e.feedbackData, // <--- AGREGAR ESTO AL RETORNO
+      integrantes: e.integrantes.map(i => ({ nombre: i.nombre, carrera: i.carrera || "" }))
+  }))
     });
   });
 

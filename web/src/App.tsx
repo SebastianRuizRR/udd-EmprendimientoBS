@@ -663,6 +663,7 @@ type Analytics = {
     puntos?: number;
     fotoLegoUrl?: string;
     desafioId?: number;
+    feedbackData?: string; 
   }[];
   reflections: {
     roomCode: string;
@@ -1585,7 +1586,7 @@ const goPrevStep = React.useCallback(() => {
                  puntos: e.puntos || 0,   
                  fotoLegoUrl: e.foto, 
                  desafioId: e.desafioId, 
-                 
+                 feedbackData: e.feedbackData, 
                  roomCode: code,
                  teamName: e.teamName, 
                  integrantes: e.integrantes,
@@ -4958,136 +4959,158 @@ if (mode === "alumno") {
           )}
 
 {/* FASE 3: CREATIVIDAD (ALUMNO) */}
+{/* FASE 3: CREATIVIDAD (ALUMNO) */}
 {mode === "alumno" && flow.step === "f3_activity" && (
-            <Card
-              title="Creatividad en Acción"
-              subtitle={`Tiempo: ${mmss(flow.remaining)} · Monedas: ${coins}`}
-              width={900}
-            >
-              <div style={{ marginBottom: 20 }}>
-                <Btn
-                  label="🎲 Girar Ruleta de Desafío (Opcional)"
-                  onClick={() => setShowLegoRoulette(true)}
-                  bg="#9C27B0"
-                />
-              </div>
-              {showLegoRoulette && (
-                <RuletaDesafioLego
-                  onClose={() => setShowLegoRoulette(false)}
-                  esProfesor={false}
-                  onTokenChange={(delta) => setCoins((c) => c + delta)}
-                  items={rouletteConfig} 
-                  maxSpins={maxSpins}
-                  teamName={groupName || "Equipo"}
-                />
-              )}
-              
-              <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "1fr 1fr", gap: 20, alignItems: "start", textAlign: "left" }}>
-                
-                <div style={{ background: "#F8F9FA", padding: 16, borderRadius: 12, border: "1px solid #E3E8EF" }}>
-                    <div style={{ fontWeight: 800, marginBottom: 8, color: theme.azul }}>1. Sube tu prototipo</div>
-                    <p style={{fontSize: 13, marginBottom: 12, color: "#666"}}>Toma una foto clara de tu construcción LEGO.</p>
-                    
-                    <label style={{ 
-                        display: 'block', padding: 20, border: '2px dashed #ccc', borderRadius: 12, 
-                        textAlign: 'center', cursor: 'pointer', background: '#fff' 
-                    }}>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          style={{display: 'none'}}
-                          onChange={async (e) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  
-  // Comprimir y convertir a Base64
-  const reader = new FileReader();
-  reader.onload = async () => {
-    const dataUrl = String(reader.result || "");
-    
-    // ENVIAR A LA BASE DE DATOS
-    const tid = getMyTeamId();
-    if (tid) {
-        // Guardamos en la columna 'fotoLegoUrl'
-        await updateTeamData(tid, { fotoLegoUrl: dataUrl });
-        alert("¡Foto guardada en la nube!");
+    <Card
+      title="Creatividad en Acción"
+      subtitle={`Tiempo: ${mmss(flow.remaining)} · Monedas: ${coins}`}
+      width={900}
+    >
+      {/* Botón Ruleta (Opcional) */}
+      <div style={{ marginBottom: 20 }}>
+        <Btn
+          label="🎲 Girar Ruleta de Desafío (Opcional)"
+          onClick={() => setShowLegoRoulette(true)}
+          bg="#9C27B0"
+        />
+      </div>
+      {showLegoRoulette && (
+        <RuletaDesafioLego
+          onClose={() => setShowLegoRoulette(false)}
+          esProfesor={false}
+          onTokenChange={(delta) => addCoins(delta)} // 🔥 CORRECCIÓN: addCoins
+          items={rouletteConfig} 
+          maxSpins={maxSpins}
+          teamName={groupName || "Equipo"}
+        />
+      )}
+      
+      <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "1fr 1fr", gap: 20, alignItems: "start", textAlign: "left" }}>
         
-        // Lógica de checklist (puntos)
-        if (!completedTasks["foto"]) {
-            setCompletedTasks(prev => ({ ...prev, "foto": true }));
-            addCoins(3); // Usamos la nueva función
-        }
-    } else {
-        alert("Error: No se encontró tu equipo para guardar la foto.");
-    }
-  };
-  reader.readAsDataURL(file);
-}}
-                        />
-                        <span style={{fontWeight: 700, color: theme.azul}}>📷 Seleccionar archivo</span>
-                    </label>
-                </div>
+        {/* LADO IZQUIERDO: SUBIR FOTO */}
+        <div style={{ background: "#F8F9FA", padding: 16, borderRadius: 12, border: "1px solid #E3E8EF" }}>
+            <div style={{ fontWeight: 800, marginBottom: 8, color: theme.azul }}>1. Sube tu prototipo</div>
+            <p style={{fontSize: 13, marginBottom: 12, color: "#666"}}>Toma una foto clara de tu construcción LEGO.</p>
+            
+            <label style={{ 
+                display: 'block', padding: 20, border: '2px dashed #ccc', borderRadius: 12, 
+                textAlign: 'center', cursor: 'pointer', background: '#fff' 
+            }}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{display: 'none'}}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = async () => {
+                      const dataUrl = String(reader.result || "");
+                      
+                      const tid = getMyTeamId();
+                      if (tid) {
+                        // Guardamos en la columna 'fotoLegoUrl'
+                        await updateTeamData(tid, { fotoLegoUrl: dataUrl });
+                        alert("¡Foto guardada en la nube!");
+                        
+                        // Lógica automática: Marcar "Foto clara" si no estaba marcada
+                        const photoItem = checklistConfig.find((i:any) => i.id === 'foto');
+                        const val = photoItem ? (photoItem.value || 3) : 3;
 
-                {/* LADO DERECHO: CHECKLIST DINÁMICO */}
-                <div>
-                  <div style={{ fontWeight: 800, marginBottom: 8, color: theme.azul }}>2. Checklist de Calidad</div>
-                  <p style={{fontSize: 13, marginBottom: 12, color: "#666"}}>Marca los hitos cumplidos:</p>
-                  
-                  <div style={{ display: "grid", gap: 10 }}>
-                    {/* Iteramos sobre la configuración dinámica del Admin */}
-                    {checklistConfig.map((item: any) => {
-                        const isDone = !!completedTasks[item.id];
-                        const val = item.value || 0;
+                        if (!completedTasks["foto"]) {
+                            setCompletedTasks(prev => ({ ...prev, "foto": true }));
+                            addCoins(val); // 🔥 CORRECCIÓN: addCoins
+                        }
+                      } else {
+                        alert("Error: No se encontró tu equipo para guardar la foto.");
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                <span style={{fontWeight: 700, color: theme.azul}}>📷 Seleccionar archivo</span>
+            </label>
+        </div>
 
-                        const toggleTask = () => {
-                            if (item.id === 'foto') return; // La foto es automática (solo lectura aquí)
+        {/* LADO DERECHO: CHECKLIST DINÁMICO (CONECTADO A DB) */}
+        <div>
+          <div style={{ fontWeight: 800, marginBottom: 8, color: theme.azul }}>2. Checklist de Calidad</div>
+          <p style={{fontSize: 13, marginBottom: 12, color: "#666"}}>Marca los hitos cumplidos:</p>
+          
+          <div style={{ display: "grid", gap: 10 }}>
+            {(() => {
+                // 1. Recuperar estado guardado en DB (si existe)
+                const myTeamData = analytics.teams.find(t => t.roomCode === activeRoom && t.teamName === groupName);
+                // Parseamos el JSON que guardamos en feedbackData (o iniciamos vacío)
+                const savedChecks = myTeamData?.feedbackData ? JSON.parse(myTeamData.feedbackData) : {};
+                // Mezclamos con el estado local actual
+                const currentChecks = { ...savedChecks, ...completedTasks };
+
+                return checklistConfig.map((item: any) => {
+                    const isDone = !!currentChecks[item.id];
+                    const val = item.value || 0;
+
+                    const toggleTask = () => {
+                        if (item.id === 'foto') return; 
+                        
+                        const newState = !isDone;
+                        const newChecks = { ...currentChecks, [item.id]: newState };
+                        
+                        // A) Actualizar visualmente
+                        setCompletedTasks(newChecks);
+                        
+                        // B) Guardar en BD y Sumar Puntos
+                        const tid = getMyTeamId();
+                        if (tid) {
+                            // Guardamos el checklist completo como string JSON en 'feedbackData'
+                            // (Ya que es un campo de texto libre en la DB)
+                            updateTeamData(tid, { feedbackData: JSON.stringify(newChecks) });
                             
-                            const newState = !isDone;
-                            setCompletedTasks(prev => ({ ...prev, [item.id]: newState }));
-                            
-                            // Suma o Resta el valor dinámico configurado
-                            setCoins(c => newState ? c + val : c - val);
-                        };
+                            // Sumar o restar monedas
+                            addCoins(newState ? val : -val); 
+                        }
+                    };
 
-                        return (
-                          <div 
-                            key={item.id}
-                            onClick={toggleTask}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: 12,
-                                padding: "12px 16px", borderRadius: 10,
-                                background: isDone ? "#E8F5E9" : "#FFEBEE",
-                                border: `1px solid ${isDone ? "#4CAF50" : "#FFCDD2"}`,
-                                cursor: item.id === 'foto' ? "default" : "pointer",
-                                transition: "all 0.2s ease"
-                            }}
-                          >
-                              <div style={{
-                                  width: 24, height: 24, borderRadius: 6,
-                                  background: isDone ? "#4CAF50" : "#fff",
-                                  border: `2px solid ${isDone ? "#4CAF50" : "#F44336"}`,
-                                  display: "grid", placeItems: "center",
-                                  color: isDone ? "#fff" : "#F44336",
-                                  fontWeight: 900, fontSize: 14, flexShrink: 0
-                              }}>
-                                  {isDone ? "✓" : "✕"}
-                              </div>
-                              <div style={{flex:1}}>
-                                  <span style={{ fontWeight: 600, color: isDone ? "#2E7D32" : "#C62828", fontSize: 14, display:'block' }}>
-                                      {item.label}
-                                  </span>
-                                  <span style={{fontSize: 11, color: '#666'}}>
-                                      Recompensa: {val} Monedas
-                                  </span>
-                              </div>
+                    return (
+                      <div 
+                        key={item.id}
+                        onClick={toggleTask}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 12,
+                            padding: "12px 16px", borderRadius: 10,
+                            background: isDone ? "#E8F5E9" : "#FFEBEE",
+                            border: `1px solid ${isDone ? "#4CAF50" : "#FFCDD2"}`,
+                            cursor: item.id === 'foto' ? "default" : "pointer",
+                            transition: "all 0.2s ease"
+                        }}
+                      >
+                          <div style={{
+                              width: 24, height: 24, borderRadius: 6,
+                              background: isDone ? "#4CAF50" : "#fff",
+                              border: `2px solid ${isDone ? "#4CAF50" : "#F44336"}`,
+                              display: "grid", placeItems: "center",
+                              color: isDone ? "#fff" : "#F44336",
+                              fontWeight: 900, fontSize: 14, flexShrink: 0
+                          }}>
+                              {isDone ? "✓" : "✕"}
                           </div>
-                        );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </Card>
-          )}
+                          <div style={{flex:1}}>
+                              <span style={{ fontWeight: 600, color: isDone ? "#2E7D32" : "#C62828", fontSize: 14, display:'block' }}>
+                                  {item.label}
+                              </span>
+                              <span style={{fontSize: 11, color: '#666'}}>
+                                  Recompensa: {val} Monedas
+                              </span>
+                          </div>
+                      </div>
+                    );
+                });
+            })()}
+          </div>
+        </div>
+      </div>
+    </Card>
+)}
 
           {flow.step === "f3_rank" && (
             <Card
