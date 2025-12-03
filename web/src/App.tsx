@@ -4316,70 +4316,68 @@ if (mode === "alumno") {
               </div>
             </Card>
           )}
-          {joinedRoom && !teamReady && (
+{joinedRoom && flow.step === "lobby" && !teamReady && (
             <>
-{flow.formation === "auto" ? (
-                {/* === MODO AUTO: Solo Selección de Equipo (Anónimo) === */}
-<Card title={`Sala ${activeRoom}`} subtitle="Selecciona tu equipo para ingresar" width={600}>
-  
-  <div style={{ textAlign: "left", marginBottom: 20 }}>
-    <label style={badgeTitle}>Tu Equipo</label>
-    <select
-      value={groupName}
-      onChange={(e) => setGroupName(e.target.value)}
-      style={{ ...baseInput, padding: 12, fontSize: 16 }}
-    >
-      <option value="">-- Elige de la lista --</option>
-      {getTeamsForRoom(analytics, activeRoom).map((t: any, i) => {
-        const nombre = typeof t === "object" ? t.teamName || t.nombre : t;
-        return <option key={i} value={nombre}>{nombre}</option>;
-      })}
-    </select>
-  </div>
+              {flow.formation === "auto" ? (
+                // === MODO AUTO: Solo Selección de Equipo (Anónimo) ===
+                <Card title={`Sala ${activeRoom}`} subtitle="Selecciona tu equipo para ingresar" width={600}>
+                  
+                  {/* 1. SOLO SELECTOR DE EQUIPO */}
+                  <div style={{ textAlign: "left", marginBottom: 20 }}>
+                    <label style={badgeTitle}>Tu Equipo</label>
+                    <select
+                      value={groupName}
+                      onChange={(e) => setGroupName(e.target.value)}
+                      style={{ ...baseInput, padding: 12, fontSize: 16 }}
+                    >
+                      <option value="">-- Elige de la lista --</option>
+                      {getTeamsForRoom(analytics, activeRoom).map((t: any, i) => {
+                        const nombre = typeof t === "object" ? t.teamName || t.nombre : t;
+                        return <option key={i} value={nombre}>{nombre}</option>;
+                      })}
+                    </select>
+                  </div>
 
-  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
-    <Btn onClick={() => setJoinedRoom("")} bg={theme.amarillo} fg={theme.texto} label="⬅ Salir" full={false} />
-    
-    <Btn 
-      label="✅ Confirmar y Entrar" 
-      full={false} 
-      disabled={!groupName} 
-      onClick={async () => {
-          try {
-              // 1. Buscar el ID del equipo para marcarlo listo
-              const teamData = analytics.teams.find(t => t.roomCode === activeRoom && t.teamName === groupName);
-              
-              // 2. Unirse con nombre Anónimo (El servidor lo requiere)
-              await joinRoom(activeRoom, { 
-                  name: "Participante", 
-                  career: "", 
-                  equipoNombre: groupName 
-              });
-              
-              // 3. 🔥 ENVIAR SEÑAL DE LISTO (Usando el ID encontrado o refrescando)
-              if (teamData && teamData.id) {
-                  await setTeamReadyDB(teamData.id);
-              } else {
-                  // Fallback de seguridad
-                  const fresh = await getRoomState(activeRoom);
-                  const freshTeam = fresh?.equipos.find((e:any) => e.teamName === groupName);
-                  if (freshTeam?.id) await setTeamReadyDB(freshTeam.id);
-              }
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
+                    <Btn onClick={() => setJoinedRoom("")} bg={theme.amarillo} fg={theme.texto} label="⬅ Salir" full={false} />
+                    
+                    <Btn 
+                      label="✅ Confirmar y Entrar" 
+                      full={false} 
+                      disabled={!groupName} 
+                      onClick={async () => {
+                          try {
+                              const teamData = analytics.teams.find(t => t.roomCode === activeRoom && t.teamName === groupName);
+                              
+                              await joinRoom(activeRoom, { 
+                                  name: "Participante", 
+                                  career: "", 
+                                  equipoNombre: groupName 
+                              });
+                              
+                              if (teamData && teamData.id) {
+                                  await setTeamReadyDB(teamData.id);
+                              } else {
+                                  const fresh = await getRoomState(activeRoom);
+                                  const freshTeam = fresh?.equipos.find((e:any) => e.teamName === groupName);
+                                  if (freshTeam?.id) await setTeamReadyDB(freshTeam.id);
+                              }
 
-              setTeamReady(true);
+                              setTeamReady(true);
 
-          } catch(e: any) { 
-              alert("Error: " + (e.message || "Intenta de nuevo")); 
-          }
-      }} 
-    />
-  </div>
-</Card>
-) : (
+                          } catch(e: any) { 
+                              console.error(e);
+                              alert("Error al unirse: " + (e.message || "Intenta de nuevo")); 
+                          }
+                      }} 
+                    />
+                  </div>
+                </Card>
+              ) : (
                 // === MODO MANUAL: Crear Equipo con Sugerencias y Validación ===
                 <Card title={`Sala ${activeRoom}`} subtitle="Arma tu equipo" width={800}>
                   
-                  {/* 1. NOMBRE DEL EQUIPO + SUGERIR */}
+                  {/* 1. NOMBRE DEL EQUIPO */}
                   <div style={{textAlign: "left", marginBottom: 20}}>
                       <label style={badgeTitle}>Nombre del Equipo</label>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10 }}>
@@ -4451,54 +4449,29 @@ if (mode === "alumno") {
 
                   {/* 3. BOTONES DE ACCIÓN */}
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
-                    <Btn 
-  onClick={() => {
-      sessionStorage.removeItem(`ready_${activeRoom}`);
-      setJoinedRoom("");
-  }} 
-  bg={theme.amarillo} 
-  fg={theme.texto} 
-  label="⬅ Salir" 
-  full={false} 
-/>
+                    <Btn onClick={() => setJoinedRoom("")} bg={theme.amarillo} fg={theme.texto} label="⬅ Salir" full={false} />
                     
- <Btn 
-                      label="Crear Equipo y Entrar" 
+                    <Btn 
+                      label="✅ Confirmar Equipo" 
                       full={false} 
                       onClick={async () => {
-                          // 1. Validaciones básicas
                           if(!groupName.trim()) return alert("Falta nombre del equipo");
                           const clean = integrantes.filter(x => x.nombre.trim());
                           if(clean.length === 0) return alert("Agrega al menos un integrante");
 
                           try {
                               let teamId = 0;
-                              // 2. Crear/Unir a cada integrante (Bucle)
                               for (const p of clean) {
                                   const res: any = await joinRoom(activeRoom, {
                                       name: p.nombre,
                                       career: p.carrera,
                                       equipoNombre: groupName
                                   });
-                                  // Guardamos el ID del equipo si nos lo devuelve
                                   if (res.equipoId) teamId = res.equipoId;
                               }
-                              
-                              // 3. 🔥 CONFIRMAR AL SERVIDOR QUE ESTÁN LISTOS
-                              if (teamId) {
-                                  await setTeamReadyDB(teamId);
-                              } else {
-                                  // Fallback de emergencia si no capturamos el ID antes
-                                  const state = await getRoomState(activeRoom);
-                                  const t = state?.equipos?.find((e: any) => e.teamName === groupName);
-                                  if (t?.id) await setTeamReadyDB(t.id);
-                              }
-                              
-                              // 4. Éxito local
+                              if (teamId) await setTeamReadyDB(teamId);
                               setTeamReady(true);
-                          } catch(e: any) { 
-                              alert("Error: " + (e.message || "Error al crear equipo")); 
-                          }
+                          } catch(e: any) { alert("Error: " + e.message); }
                       }} 
                     />
                   </div>
