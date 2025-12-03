@@ -4379,26 +4379,40 @@ if (mode === "alumno") {
                     />
                   </div>
                 </Card>
-              ) : (
-                // === MODO MANUAL: Crear Equipo con Múltiples Integrantes ===
+) : (
+                // === MODO MANUAL: Crear Equipo con Sugerencias y Validación ===
                 <Card title={`Sala ${activeRoom}`} subtitle="Arma tu equipo" width={800}>
+                  
+                  {/* 1. NOMBRE DEL EQUIPO + SUGERIR */}
                   <div style={{textAlign: "left", marginBottom: 20}}>
                       <label style={badgeTitle}>Nombre del Equipo</label>
-                      <input 
-                          placeholder="Ej: Los Innovadores"
-                          value={groupName}
-                          onChange={e => setGroupName(e.target.value)}
-                          style={baseInput}
-                      />
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10 }}>
+                        <input 
+                            placeholder="Ej: Los Innovadores"
+                            value={groupName}
+                            onChange={e => setGroupName(e.target.value)}
+                            style={baseInput}
+                        />
+                        <Btn 
+                            label="💡 Sugerir" 
+                            full={false} 
+                            bg={theme.amarillo}
+                            fg={theme.texto}
+                            onClick={() => {
+                                const opciones = ["Alpha", "Fénix", "Quantum", "Nebula", "Rocket", "Chispa", "Titanes", "Delta", "Nova", "Vortex"];
+                                setGroupName(opciones[Math.floor(Math.random() * opciones.length)]);
+                            }}
+                        />
+                      </div>
                   </div>
 
+                  {/* 2. LISTA DE INTEGRANTES */}
                   <div style={{textAlign: "left", background: "#F8F9FA", padding: 16, borderRadius: 12, border: "1px solid #eee"}}>
                       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 10}}>
                           <label style={badgeTitle}>Integrantes</label>
                           <span style={{fontSize:12, color:'#666'}}>{integrantes.length} / {MAX_PER_GROUP}</span>
                       </div>
                       
-                      {/* LISTA DE INTEGRANTES (NOMBRE + CARRERA) */}
                       <div style={{display:'grid', gap: 10}}>
                           {integrantes.length === 0 && (setIntegrantes([{nombre:"", carrera:""}]) as any)}
                           
@@ -4439,11 +4453,12 @@ if (mode === "alumno") {
                       </button>
                   </div>
 
+                  {/* 3. BOTONES DE ACCIÓN */}
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
                     <Btn onClick={() => setJoinedRoom("")} bg={theme.amarillo} fg={theme.texto} label="⬅ Salir" full={false} />
                     
                     <Btn 
-                      label="Crear Equipo y Entrar" 
+                      label="✅ Confirmar Equipo" 
                       full={false} 
                       onClick={async () => {
                           if(!groupName.trim()) return alert("Falta nombre del equipo");
@@ -4451,18 +4466,20 @@ if (mode === "alumno") {
                           if(clean.length === 0) return alert("Agrega al menos un integrante");
 
                           try {
-                              // ENVIAR TODOS LOS INTEGRANTES (Loop)
+                              let teamId = 0;
+                              // ENVIAR TODOS LOS INTEGRANTES
                               for (const p of clean) {
-                                  await joinRoom(activeRoom, {
+                                  const res: any = await joinRoom(activeRoom, {
                                       name: p.nombre,
                                       career: p.carrera,
                                       equipoNombre: groupName
                                   });
+                                  if (res.equipoId) teamId = res.equipoId;
                               }
-                              // Marcar listo al final
-                              const check = await getRoomState(activeRoom); // Truco para obtener ID si hiciera falta, o confiamos en el loop
-                              // (Opcional: Podrías llamar a setTeamReadyDB si tuvieras el ID del equipo, 
-                              // pero joinRoom ya marca 'listo: true' automáticamente en modo manual gracias a tu backend).
+                              
+                              if (teamId) {
+                                  await setTeamReadyDB(teamId);
+                              }
                               
                               setTeamReady(true);
                           } catch(e: any) { alert("Error: " + e.message); }
