@@ -2633,27 +2633,43 @@ async function aplicarGruposSugeridos() {
     }
   }
 
-  async function handleJoinRoom() {
+async function handleJoinRoom() {
     const code = (roomCode || "").trim().toUpperCase();
+    
     if (!code) {
       alert("Ingresa el código de sala");
       return;
     }
+    
+    // 🔥 VALIDACIÓN CRÍTICA: Asegurar que el nombre del alumno no sea vacío
+    if (!miNombre.trim()) {
+        alert("Por favor, ingresa tu nombre de estudiante para identificarte.");
+        return;
+    }
+
     try {
+      // 1. Llamada a la API con datos del alumno
       await joinRoom(code, {
-        name: miNombre || "Alumno",
-        career: miCarrera || "",
+        name: miNombre.trim(),
+        career: miCarrera.trim(),
+        // 2. ENVIAR NOMBRE DE EQUIPO TEMPORAL FIJO (El servidor lo requiere)
+        equipoNombre: "Temporal_Pre_Seleccion" 
       });
+      
+      // 3. Si tiene éxito, actualiza el estado
       publish({ roomCode: code });
       setJoinedRoom(code);
+      
       const url = new URL(window.location.href);
       url.searchParams.set("room", code);
       window.history.replaceState({}, "", url.toString());
-    } catch (err) {
+
+    } catch (err: any) {
       console.error(err);
-      alert("No se pudo unir a la sala. Verifica el código o la conexión.");
+      // El error de 400 ya no debería aparecer si llenas todos los campos.
+      alert("Error al unirse: " + err.message);
     }
-  }
+}
   const [flowState, setFlowState] = useState<FlowState>(ESTADO_INICIAL);
 
 useEffect(() => {
@@ -4276,13 +4292,28 @@ if (mode === "alumno") {
         )}
 
         <AutoCenter>
-          {/* --- 1. LOGIN (SI NO ESTOY UNIDO) --- */}
+{/* --- 1. LOGIN (SI NO ESTOY UNIDO) --- */}
           {!joinedRoom && (
             <Card
               title="Alumno"
-              subtitle="Ingresa el código de sala para continuar"
+              subtitle="Ingresa tus datos y el código de sala"
               width={520}
             >
+              <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
+                <input
+                    placeholder="Tu Nombre Completo (Obligatorio)"
+                    value={miNombre}
+                    onChange={(e) => setMiNombre(e.target.value)}
+                    style={baseInput}
+                />
+                 <input
+                    placeholder="Tu Carrera (Opcional)"
+                    value={miCarrera}
+                    onChange={(e) => setMiCarrera(e.target.value)}
+                    style={baseInput}
+                />
+              </div>
+
               <input
                 placeholder="Código de sala"
                 value={roomCode}
@@ -4294,7 +4325,10 @@ if (mode === "alumno") {
                   marginBottom: 14,
                 }}
               />
-              <Btn onClick={handleJoinRoom} label="Entrar a la sala" />
+              <Btn 
+                onClick={handleJoinRoom} 
+                label="Entrar a la sala" 
+              />
               <Btn
                 onClick={() => setMode("inicio")}
                 bg={theme.amarillo}
@@ -4304,7 +4338,6 @@ if (mode === "alumno") {
             </Card>
           )}
 
-          {/* --- 2. LOBBY / SELECCIÓN DE EQUIPO --- */}
           {joinedRoom && flow.step === "lobby" && !teamReady && (
             <>
               {flow.formation === "auto" ? (
