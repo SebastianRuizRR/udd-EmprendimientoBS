@@ -2482,68 +2482,52 @@ function handleCreateRoom() {
 
 async function aplicarGruposSugeridos() {
     const code = flow.roomCode || activeRoom;
-    if (!code) {
-      alert("Primero crea una sala.");
-      return;
-    }
-    if (!recommendedGroups.length) {
-      alert("No hay grupos sugeridos para aplicar.");
-      return;
-    }
+    if (!code) return alert("Primero crea una sala.");
+    if (!recommendedGroups.length) return alert("No hay grupos sugeridos.");
 
-    // 1. VERIFICACIÓN DE SEGURIDAD
-    const equiposActuales = teamsForCurrentRoom(analytics, code);
-    if (equiposActuales.length > 0) {
-      const confirmar = window.confirm(
-        `⚠️ ¡ADVERTENCIA!\n\nYa hay ${equiposActuales.length} equipos. ¿Sobrescribir con los del Excel?`
-      );
-      if (!confirmar) return;
-    }
-
-    // 2. BLOQUEAR LA SINCRONIZACIÓN (Para que no te borre los datos visuales)
-    isUploading.current = true;
+    // 1. BLOQUEO TOTAL DE SINCRONIZACIÓN (Para que no se borren)
+    isUploading.current = true; 
 
     try {
-      // 3. ACTUALIZACIÓN VISUAL INMEDIATA (Optimista)
-      // Borramos los viejos y ponemos los nuevos VACÍOS (integrantes: []) para que los alumnos se unan.
+      // 2. Actualización Visual Inmediata (Optimista)
       update((prev) => {
         const otros = prev.teams.filter((t) => t.roomCode !== code);
         const nuevos = recommendedGroups.map((g) => ({
           roomCode: code,
           teamName: g.nombre,
-          integrantes: [], // Vacío visualmente
+          integrantes: [], 
           ts: Date.now(),
+          listo: false
         }));
         return { ...prev, teams: [...otros, ...nuevos] };
       });
 
-      // 4. ACTUALIZAR CONFIGURACIÓN DE LA SALA (Contador y Modo Auto)
-      const totalEquipos = recommendedGroups.length;
-      publish({
-        expectedTeams: totalEquipos,
-        formation: "auto", // Importante: Cambia la vista del alumno a lista desplegable
-        step: "lobby",
-      });
-
-      // 5. ENVIAR AL SERVIDOR (Persistencia Real)
-      // Preparamos el payload limpio
+      // 3. Enviar al Servidor
       const payload = recommendedGroups.map((g) => ({
         nombre: g.nombre,
-        integrantes: [], // Enviamos vacío al server también
+        integrantes: []
       }));
 
       await uploadTeamsBatch(code, payload);
+      
+      // 4. Actualizar estado de la sala a "Auto"
+      publish({
+        expectedTeams: recommendedGroups.length,
+        formation: "auto",
+        step: "lobby",
+      });
 
-      alert(`✅ ${totalEquipos} grupos creados y sincronizados.`);
-    } catch (error) {
+      alert(`✅ ${recommendedGroups.length} grupos cargados. Los alumnos ya pueden entrar.`);
+
+    } catch (error: any) {
       console.error(error);
-      alert("Error al guardar en la nube (pero los ves en local).");
+      alert("Error al guardar: " + error.message);
+      isUploading.current = false; // Desbloquear si falla
     } finally {
-      // 6. REACTIVAR LA SINCRONIZACIÓN
-      // Le damos un segundo extra para asegurar que el servidor procesó todo
+      // 5. DESBLOQUEO SEGURO (Damos 3 segundos al servidor para procesar antes de volver a leer)
       setTimeout(() => {
         isUploading.current = false;
-      }, 1500);
+      }, 3000);
     }
   }
 
@@ -4748,25 +4732,29 @@ if (mode === "alumno") {
             (() => {
               const confirmChoice = async () => {
                 const tId = temaSel as keyof typeof THEMES;
-                const valid = tId && THEMES[tId] && desafioIndex >= 0 && desafioIndex < (THEMES[tId].desafios?.length || 0);
-                if (!valid) return alert("Elige una temática y un desafío.");
+                const valid = tId && THEMES[tId] && desafioIndex >= 0;
+                if (!valid) return alert("Selecciona una opción válida.");
 
+                // 1. Obtener IDs
                 const desafioReal = THEMES[tId].desafios[desafioIndex];
                 const desafioIdDB = (desafioReal as any).id; 
-
                 const tid = getMyTeamId();
 
                 if (tid && desafioIdDB) {
                     try {
+                        // 2. GUARDAR EN BD (Igual que unirse a sala)
                         await updateTeamData(tid, { desafioId: Number(desafioIdDB) });
                         
-                        incrementChallengeUsage(tId, desafioIndex);
+                        // 3. FEEDBACK INMEDIATO (Optimista)
+                        // No esperamos al polling para mostrar que está listo
+                        setConfirmed(true); 
                         
-                        setConfirmed(true);
-                        alert("¡Desafío guardado en la nube!");
-                    } catch (e) { alert("Error al guardar selección."); }
+                        // (Opcional) Forzar actualización de analíticas local
+                        incrementChallengeUsage(tId, desafioIndex);
+
+                    } catch (e) { alert("Error de conexión."); }
                 } else {
-                    alert("Error: No se encontró tu equipo en la base de datos.");
+                    alert("No se encontró tu equipo. Intenta recargar.");
                 }
               };
 
@@ -5599,16 +5587,21 @@ function ThemeEditor({ THEMES, setTHEMES, flow, publish }: any) {
   const [pitchSec, setPitchSec] = useState(flow.pitchSeconds ?? 90);
 
   const saveAll = async () => {
-    // 1. Guardar Tiempos (Sala)
-    publish({ 
-        f0Seconds: f0Sec, f1Seconds: f1Sec, f2Seconds: f2Sec, 
-        f3Seconds: f3Sec, f4PrepSeconds: f4PrepSec, pitchSeconds: pitchSec 
-    });
 
-
-    await setTHEMES(localThemes);
     
-    alert("¡Todo guardado en la Base de Datos!");
+    try {
+        publish({ 
+            f0Seconds: f0Sec, f1Seconds: f1Sec, f2Seconds: f2Sec, 
+            f3Seconds: f3Sec, f4PrepSeconds: f4PrepSec, pitchSeconds: pitchSec 
+        });
+
+        await setTHEMES(localThemes);
+        
+        alert("¡Guardado correctamente!");
+    } catch(e) {
+        alert("Error al guardar.");
+    }
+
   };
 
   const updateChallenge = (idx: number, field: string, val: string) => {

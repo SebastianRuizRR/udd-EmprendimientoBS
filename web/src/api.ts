@@ -137,18 +137,20 @@ export async function health() { return request("/health", "GET"); }
 // --- ADMIN ---
 export async function getConfig() { 
     const data = await request<any>("/admin/config", "GET");
-    // TRADUCCIÓN VITAL: La BD devuelve imgUrl, el front usa img.
+    
     if (data.temas) {
         Object.keys(data.temas).forEach(k => {
             if (data.temas[k].desafios) {
                 data.temas[k].desafios = data.temas[k].desafios.map((d:any) => ({
-                    ...d, img: d.img // El backend ya debe enviar 'img' si lo mapeamos en admin.ts, pero por seguridad:
+                    ...d, 
+                    img: d.imgUrl || d.img || "" 
                 }));
             }
         });
     }
     return data; 
 }
+
 export async function saveThemesConfig(t: any) { return request("/admin/themes", "POST", t); }
 export async function saveRouletteConfigDB(i: any[]) { return request("/admin/roulette", "POST", i); }
 export async function saveChecklistConfigDB(i: any[]) { return request("/admin/checklist", "POST", i); }
