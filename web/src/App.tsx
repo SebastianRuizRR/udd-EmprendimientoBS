@@ -2635,41 +2635,23 @@ async function aplicarGruposSugeridos() {
 
 async function handleJoinRoom() {
     const code = (roomCode || "").trim().toUpperCase();
-    
-    if (!code) {
-      alert("Ingresa el código de sala");
-      return;
-    }
-    
-    // 🔥 VALIDACIÓN CRÍTICA: Asegurar que el nombre del alumno no sea vacío
-    if (!miNombre.trim()) {
-        alert("Por favor, ingresa tu nombre de estudiante para identificarte.");
-        return;
-    }
+    if (!code) return alert("Ingresa el código de sala");
 
-    try {
-      // 1. Llamada a la API con datos del alumno
-      await joinRoom(code, {
-        name: miNombre.trim(),
-        career: miCarrera.trim(),
-        // 2. ENVIAR NOMBRE DE EQUIPO TEMPORAL FIJO (El servidor lo requiere)
-        equipoNombre: "Temporal_Pre_Seleccion" 
-      });
-      
-      // 3. Si tiene éxito, actualiza el estado
-      publish({ roomCode: code });
+    const state = await getRoomState(code);
+    
+    if (state) {
       setJoinedRoom(code);
+      
+      publish({ roomCode: code }); 
       
       const url = new URL(window.location.href);
       url.searchParams.set("room", code);
       window.history.replaceState({}, "", url.toString());
-
-    } catch (err: any) {
-      console.error(err);
-      // El error de 400 ya no debería aparecer si llenas todos los campos.
-      alert("Error al unirse: " + err.message);
+    } else {
+      alert("La sala no existe o el código es incorrecto.");
     }
-}
+  }
+
   const [flowState, setFlowState] = useState<FlowState>(ESTADO_INICIAL);
 
 useEffect(() => {
@@ -4292,324 +4274,151 @@ if (mode === "alumno") {
         )}
 
         <AutoCenter>
-{/* --- 1. LOGIN (SI NO ESTOY UNIDO) --- */}
-          {!joinedRoom && (
-            <Card
-              title="Alumno"
-              subtitle="Ingresa tus datos y el código de sala"
-              width={520}
-            >
-              <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
-                <input
-                    placeholder="Tu Nombre Completo (Obligatorio)"
-                    value={miNombre}
-                    onChange={(e) => setMiNombre(e.target.value)}
-                    style={baseInput}
-                />
-                 <input
-                    placeholder="Tu Carrera (Opcional)"
-                    value={miCarrera}
-                    onChange={(e) => setMiCarrera(e.target.value)}
-                    style={baseInput}
-                />
-              </div>
-
-              <input
-                placeholder="Código de sala"
-                value={roomCode}
-                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                style={{
-                  ...baseInput,
-                  textAlign: "center",
-                  fontWeight: 700,
-                  marginBottom: 14,
-                }}
-              />
-              <Btn 
-                onClick={handleJoinRoom} 
-                label="Entrar a la sala" 
-              />
-              <Btn
-                onClick={() => setMode("inicio")}
-                bg={theme.amarillo}
-                fg={theme.texto}
-                label="⬅ Back"
-              />
-            </Card>
-          )}
-
+{/* --- 1. LOGIN: SOLO CÓDIGO (SÚPER RÁPIDO) --- */}
+{/* --- 2. LOBBY: DATOS Y EQUIPO --- */}
           {joinedRoom && flow.step === "lobby" && !teamReady && (
             <>
               {flow.formation === "auto" ? (
-                // === MODO AUTO ===
-                <Card
-                  title={`Sala ${activeRoom}`}
-                  subtitle="Confirma tu equipo para ingresar"
-                  width={600}
-                >
+                // === MODO AUTO: Nombre + Selección ===
+                <Card title={`Sala ${activeRoom}`} subtitle="Únete a tu equipo" width={600}>
+                  {/* 1. Input Nombre (Obligatorio por Backend) */}
+                  <div style={{marginBottom: 15, textAlign: 'left'}}>
+                      <label style={{fontWeight:700, fontSize:12, color:'#666'}}>TU NOMBRE</label>
+                      <input 
+                          placeholder="Ej: Juan Pérez"
+                          value={miNombre}
+                          onChange={e => setMiNombre(e.target.value)}
+                          style={baseInput}
+                      />
+                  </div>
+
+                  {/* 2. Selector de Equipo */}
                   <div style={{ textAlign: "left", marginBottom: 20 }}>
-                    <label
-                      style={{
-                        fontWeight: 800,
-                        color: theme.azul,
-                        display: "block",
-                        marginBottom: 8,
-                      }}
-                    >
-                      Selecciona tu Equipo
-                    </label>
+                    <label style={{fontWeight:700, fontSize:12, color:'#666'}}>ELIGE TU EQUIPO</label>
                     <select
                       value={groupName}
                       onChange={(e) => setGroupName(e.target.value)}
                       style={{ ...baseInput, padding: 12, fontSize: 16 }}
                     >
-                      <option value="">-- Elige tu grupo --</option>
+                      <option value="">-- Seleccionar --</option>
                       {getTeamsForRoom(analytics, activeRoom).map((t: any, i) => {
                         const nombre = typeof t === "object" ? t.teamName || t.nombre : t;
-                        return (
-                          <option key={i} value={nombre}>
-                            {nombre}
-                          </option>
-                        );
+                        return <option key={i} value={nombre}>{nombre}</option>;
                       })}
                     </select>
                   </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      marginTop: 12,
-                    }}
-                  >
-                    <Btn
-                      onClick={() => setJoinedRoom("")}
-                      bg={theme.amarillo}
-                      fg={theme.texto}
-                      label="⬅ Salir"
-                      full={false}
+
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
+                    <Btn onClick={() => setJoinedRoom("")} bg={theme.amarillo} fg={theme.texto} label="⬅ Salir" full={false} />
+                    
+                    <Btn 
+                      label="✅ Unirme" 
+                      full={false} 
+                      disabled={!groupName || !miNombre.trim()} 
+                      onClick={async () => {
+                          if(!miNombre.trim()) return alert("Ingresa tu nombre");
+                          try {
+                              const res:any = await joinRoom(activeRoom, { 
+                                  name: miNombre, 
+                                  career: "", // En auto no pedimos carrera si no quieres
+                                  equipoNombre: groupName 
+                              });
+                              
+                              if(res.equipoId) await setTeamReadyDB(res.equipoId);
+                              setTeamReady(true);
+                          } catch(e: any) { alert(e.message); }
+                      }} 
                     />
-<Btn 
-  label="✅ Confirmar y Entrar" 
-  full={false} 
-  disabled={!groupName} 
-  onClick={async () => {
-    if (!miNombre.trim()) {
-        return alert("Por favor, ingresa tu nombre de estudiante.");
-    }
-    if (!groupName.trim()) {
-        return alert("Debes seleccionar un equipo de la lista.");
-    }
-
-    try {
-        const res: any = await joinRoom(activeRoom, { 
-            name: miNombre.trim(), 
-            career: miCarrera.trim(), 
-            equipoNombre: groupName.trim()
-        });
-
-        if (res.equipoId) {
-            await setTeamReadyDB(res.equipoId); 
-        }
-
-        setTeamReady(true);
-    } catch (e: any) {
-        alert("Error: " + e.message); 
-    }
-}}
-/>
                   </div>
                 </Card>
               ) : (
-                // === MODO MANUAL ===
-                <Card
-                  title={`Sala ${activeRoom}`}
-                  subtitle="Crea tu grupo y marca listo"
-                  width={980}
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: isTablet ? "1fr" : "1fr 1fr",
-                      gap: 12,
-                      textAlign: "left",
-                    }}
-                  >
-                    <div style={{ ...panelBox }}>
-                      <div style={badgeTitle}>Nombre del equipo</div>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr auto",
-                          gap: 8,
-                        }}
-                      >
-                        <input
-                          placeholder="Ej: Aurora..."
+                // === MODO MANUAL: Crear Equipo con Múltiples Integrantes ===
+                <Card title={`Sala ${activeRoom}`} subtitle="Arma tu equipo" width={800}>
+                  <div style={{textAlign: "left", marginBottom: 20}}>
+                      <label style={badgeTitle}>Nombre del Equipo</label>
+                      <input 
+                          placeholder="Ej: Los Innovadores"
                           value={groupName}
-                          onChange={(e) => setGroupName(e.target.value)}
+                          onChange={e => setGroupName(e.target.value)}
                           style={baseInput}
-                        />
-                        <Btn
-                          label="Sugerir"
-                          full={false}
-                          variant="outline"
-                          onClick={() => {
-                            const taken = new Set(
-                              getTeamsForRoom(analytics, activeRoom)
-                            );
-                            const sug =
-                              TEAM_SUGGESTIONS.find((s) => !taken.has(s)) ||
-                              `Grupo ${taken.size + 1}`;
-                            setGroupName(sug);
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div style={{ ...panelBox }}>
-                      <div style={badgeTitle}>Integrantes</div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          opacity: 0.8,
-                          marginBottom: 6,
-                        }}
-                      >
-                        Máximo {MAX_PER_GROUP}. Solo nombres.
-                      </div>
-
-                      <div style={{ display: "grid", gap: 8 }}>
-                        {integrantes.length === 0 &&
-                          (setIntegrantes([{ nombre: "", carrera: "" }]) as any)}
-
-                        {integrantes.map((m, idx) => (
-                          <div
-                            key={idx}
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "1fr 36px",
-                              gap: 8,
-                              alignItems: "center",
-                            }}
-                          >
-                            <input
-                              placeholder={`Nombre integrante ${idx + 1}`}
-                              value={m.nombre}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                const next = [...integrantes];
-                                next[idx] = { nombre: v, carrera: "" };
-                                setIntegrantes(next);
-                              }}
-                              style={baseInput}
-                            />
-                            <button
-                              onClick={() =>
-                                setIntegrantes((prev) =>
-                                  prev.filter((_, i) => i !== idx)
-                                )
-                              }
-                              style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: 10,
-                                border: "1px solid #ccc",
-                                background: "#fff",
-                                cursor: "pointer",
-                              }}
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{ marginTop: 8, textAlign: "right" }}>
-                        <Btn
-                          label="+ Integrante"
-                          full={false}
-                          onClick={() => {
-                            if (integrantes.length < MAX_PER_GROUP)
-                              setIntegrantes([
-                                ...integrantes,
-                                { nombre: "", carrera: "" },
-                              ]);
-                          }}
-                          disabled={integrantes.length >= MAX_PER_GROUP}
-                        />
-                      </div>
-                    </div>
+                      />
                   </div>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      marginTop: 20,
-                      borderTop: "1px solid #eee",
-                      paddingTop: 15,
-                    }}
-                  >
-                    <Btn
-                      onClick={() => setMode("inicio")}
-                      bg={theme.amarillo}
-                      fg={theme.texto}
-                      label="⬅ Volver"
-                      full={false}
-                    />
-                    <Btn
-                      label="Crear Equipo y Entrar"
-                      full={false}
-                      onClick={() => {
-                        if (!groupName.trim())
-                          return alert("Ponle nombre al equipo");
-                        const clean = integrantes.filter((x) =>
-                          x.nombre.trim()
-                        );
-                        if (clean.length === 0)
-                          return alert("Agrega al menos 1 persona");
+                  <div style={{textAlign: "left", background: "#F8F9FA", padding: 16, borderRadius: 12, border: "1px solid #eee"}}>
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 10}}>
+                          <label style={badgeTitle}>Integrantes</label>
+                          <span style={{fontSize:12, color:'#666'}}>{integrantes.length} / {MAX_PER_GROUP}</span>
+                      </div>
+                      
+                      {/* LISTA DE INTEGRANTES (NOMBRE + CARRERA) */}
+                      <div style={{display:'grid', gap: 10}}>
+                          {integrantes.length === 0 && (setIntegrantes([{nombre:"", carrera:""}]) as any)}
+                          
+                          {integrantes.map((m, i) => (
+                              <div key={i} style={{display:'grid', gridTemplateColumns:'1fr 1fr 30px', gap: 8}}>
+                                  <input 
+                                      placeholder="Nombre" 
+                                      value={m.nombre} 
+                                      onChange={e => {
+                                          const copy = [...integrantes];
+                                          copy[i].nombre = e.target.value;
+                                          setIntegrantes(copy);
+                                      }}
+                                      style={baseInput}
+                                  />
+                                  <input 
+                                      placeholder="Carrera" 
+                                      value={m.carrera} 
+                                      onChange={e => {
+                                          const copy = [...integrantes];
+                                          copy[i].carrera = e.target.value;
+                                          setIntegrantes(copy);
+                                      }}
+                                      style={baseInput}
+                                  />
+                                  {integrantes.length > 1 && (
+                                      <button onClick={() => setIntegrantes(integrantes.filter((_, idx) => idx !== i))} style={{border:'none', background:'transparent', color:'red', cursor:'pointer', fontSize: 18}}>✕</button>
+                                  )}
+                              </div>
+                          ))}
+                      </div>
+                      
+                      <button 
+                          onClick={() => setIntegrantes([...integrantes, {nombre:"", carrera:""}])}
+                          style={{marginTop: 10, padding: "8px 12px", borderRadius: 8, border: "1px dashed #aaa", background: "white", cursor: "pointer", fontSize: 13, width: "100%"}}
+                      >
+                          + Agregar otro integrante
+                      </button>
+                  </div>
 
-                        update((a) => ({
-                          ...a,
-                          teams: [
-                            ...a.teams,
-                            {
-                              roomCode: activeRoom,
-                              teamName: groupName,
-                              integrantes: clean,
-                              ts: Date.now(),
-                            },
-                          ],
-                        }));
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
+                    <Btn onClick={() => setJoinedRoom("")} bg={theme.amarillo} fg={theme.texto} label="⬅ Salir" full={false} />
+                    
+                    <Btn 
+                      label="Crear Equipo y Entrar" 
+                      full={false} 
+                      onClick={async () => {
+                          if(!groupName.trim()) return alert("Falta nombre del equipo");
+                          const clean = integrantes.filter(x => x.nombre.trim());
+                          if(clean.length === 0) return alert("Agrega al menos un integrante");
 
-                        const prev = readJSON<string[]>(READY_KEY, []);
-                        const next = Array.from(
-                          new Set([
-                            ...prev,
-                            `${activeRoom}::${groupName}`,
-                          ])
-                        );
-                        writeJSON(READY_KEY, next);
-                        try {
-                          window.dispatchEvent(
-                            new StorageEvent("storage", {
-                              key: READY_KEY,
-                              newValue: JSON.stringify(next),
-                            })
-                          );
-                        } catch {}
-
-                        publish({
-                          expectedTeams:
-                            Math.max(
-                              MIN_GROUPS,
-                              Math.min(
-                                flow.expectedTeams || 0 || 0,
-                                MAX_GROUPS
-                              )
-                            ) || MIN_GROUPS,
-                        });
-                        setTeamReady(true);
-                      }}
+                          try {
+                              // ENVIAR TODOS LOS INTEGRANTES (Loop)
+                              for (const p of clean) {
+                                  await joinRoom(activeRoom, {
+                                      name: p.nombre,
+                                      career: p.carrera,
+                                      equipoNombre: groupName
+                                  });
+                              }
+                              // Marcar listo al final
+                              const check = await getRoomState(activeRoom); // Truco para obtener ID si hiciera falta, o confiamos en el loop
+                              // (Opcional: Podrías llamar a setTeamReadyDB si tuvieras el ID del equipo, 
+                              // pero joinRoom ya marca 'listo: true' automáticamente en modo manual gracias a tu backend).
+                              
+                              setTeamReady(true);
+                          } catch(e: any) { alert("Error: " + e.message); }
+                      }} 
                     />
                   </div>
                 </Card>
