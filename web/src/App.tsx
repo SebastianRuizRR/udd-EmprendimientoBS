@@ -879,8 +879,11 @@ export default function App() {
   const [integrantes, setIntegrantes] = useState<
     { nombre: string; carrera: string }[]
   >([]);
-  const [teamReady, setTeamReady] = useState(false);
-  const [coins, setCoins] = useState(0);
+const [teamReady, setTeamReady] = useState(() => {
+    return sessionStorage.getItem(`ready_${roomCode}`) === "true";
+}); 
+ 
+const [coins, setCoins] = useState(0);
   const [f1Tab, setF1Tab] = useState<"spot" | "sopa">("spot");
   const [podiumPhase, setPodiumPhase] = useState<'hidden' | 'drumroll' | 'reveal'>('hidden'); 
   
@@ -1476,18 +1479,7 @@ const goPrevStep = React.useCallback(() => {
     activeRoom && (groupName || "(sin-nombre)")
       ? `${activeRoom}::${(groupName || "").trim() || "sin-nombre"}`
       : "";
-  // --- Sync desafío confirmado al entrar a f2_activity ---
-  React.useEffect(() => {
-    if (!flow || flow.step !== "f2_activity") return;
 
-    const myTeamName = teamId?.split("::")[1] || "Equipo";
-    const ch = getTeamChoice(activeRoom, myTeamName);
-
-    if (ch && THEMES[ch.themeId as keyof typeof THEMES]) {
-      if (temaSel !== ch.themeId) setTemaSel(ch.themeId as any);
-      if (desafioIndex !== ch.desafioIndex) setDesafioIndex(ch.desafioIndex);
-    }
-  }, [flow?.step, activeRoom, teamId]);
 
   // === Pestañas de evaluación por equipo (alumno) ===
   const myTeam = teamId?.split("::")[1] || ""; // tu equipo actual (derivado de teamId)
@@ -1551,6 +1543,37 @@ const goPrevStep = React.useCallback(() => {
   const analyticsApi = useAnalytics();
   const { analytics, update } = analyticsApi;
   const equiposReales = getTeamsForRoom(analytics, activeRoom);
+
+
+// --- Sincronizar desafío confirmado ---
+  useEffect(() => {
+    if (flow.step !== "f2_theme" && flow.step !== "f2_activity") return;
+    if (!activeRoom || !groupName) return;
+
+    const myTeamData = analytics.teams.find(t => t.roomCode === activeRoom && t.teamName === groupName);
+
+    if (myTeamData && myTeamData.desafioId) {
+        let found = false;
+        
+        Object.keys(THEMES).forEach((key) => {
+            if (found) return;
+            
+            const tid = key as ThemeId; 
+            
+            const desafios = THEMES[tid].desafios;
+            
+            const idBuscado = Number(myTeamData.desafioId); 
+            const idx = desafios.findIndex((d: any) => d.id === idBuscado);
+
+            if (idx !== -1) { 
+                setTemaSel(tid); 
+                setDesafioIndex(idx);
+                setConfirmed(true);
+                found = true;
+            }
+        });
+    }
+  }, [flow.step, activeRoom, groupName, analytics.teams]);
 
   // ============================================================
   // 🔥 SINCRONIZACIÓN AUTOMÁTICA (POLLING)
@@ -4324,7 +4347,7 @@ if (mode === "alumno") {
               </div>
             </Card>
           )}
-          {joinedRoom && flow.step === "lobby" && !teamReady && (
+          {joinedRoom && !teamReady && (
             <>
 {flow.formation === "auto" ? (
                 // === MODO AUTO: Solo Selección de Equipo (Anónimo) ===
@@ -4348,39 +4371,43 @@ if (mode === "alumno") {
                   </div>
 
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
-                    <Btn onClick={() => setJoinedRoom("")} bg={theme.amarillo} fg={theme.texto} label="⬅ Salir" full={false} />
+                    <Btn 
+  onClick={() => {
+      sessionStorage.removeItem(`ready_${activeRoom}`);
+      setJoinedRoom("");
+  }} 
+  bg={theme.amarillo} 
+  fg={theme.texto} 
+  label="⬅ Salir" 
+  full={false} 
+/>
                     
                     <Btn 
                       label="✅ Confirmar y Entrar" 
                       full={false} 
-                      disabled={!groupName} // Solo se activa si eligió grupo
+                      disabled={!groupName} 
                       onClick={async () => {
                           try {
-                              // 1. Buscamos el ID del equipo ANTES de unirnos
-                              // (Necesitamos el ID para marcarlo como listo en la DB)
-                              // Buscamos en la data local que ya bajó el polling
+
                               const teamData = analytics.teams.find(t => t.roomCode === activeRoom && t.teamName === groupName);
                               
-                              // 2. Unirse con nombre Genérico (Para cumplir con la DB)
                               await joinRoom(activeRoom, { 
-                                  name: "Participante", // Nombre fijo/anónimo
+                                  name: "Participante", 
                                   career: "", 
                                   equipoNombre: groupName 
                               });
                               
-                              // 3. ENVIAR LA SEÑAL DE "LISTO" AL SERVIDOR
-                              // Esto es lo que hace subir el contador del profesor
+
                               if (teamData && teamData.id) {
                                   await setTeamReadyDB(teamData.id);
                               } else {
-                                  // Fallback: Si no tenemos el ID a mano (raro), intentamos obtenerlo de nuevo
                                   const refresh = await getRoomState(activeRoom);
                                   const freshTeam = refresh?.equipos.find((e: any) => e.teamName === groupName);
                                   if (freshTeam?.id) await setTeamReadyDB(freshTeam.id);
                               }
 
-                              // 4. Éxito visual local
                               setTeamReady(true);
+                              sessionStorage.setItem(`ready_${activeRoom}`, "true"); 
 
                           } catch(e: any) { 
                               console.error(e);
@@ -4466,7 +4493,16 @@ if (mode === "alumno") {
 
                   {/* 3. BOTONES DE ACCIÓN */}
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
-                    <Btn onClick={() => setJoinedRoom("")} bg={theme.amarillo} fg={theme.texto} label="⬅ Salir" full={false} />
+                    <Btn 
+  onClick={() => {
+      sessionStorage.removeItem(`ready_${activeRoom}`);
+      setJoinedRoom("");
+  }} 
+  bg={theme.amarillo} 
+  fg={theme.texto} 
+  label="⬅ Salir" 
+  full={false} 
+/>
                     
                     <Btn 
                       label="✅ Confirmar Equipo" 
