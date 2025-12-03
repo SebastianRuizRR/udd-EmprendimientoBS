@@ -1,12 +1,12 @@
 import { PrismaClient } from "@prisma/client";
 import { Router, Request, Response } from "express";
-import { verifyUser } from "../middleware/auth.js";
+import { verifyUser } from "../middleware/auth.js"; 
 
 export default function adminRouter(prisma: PrismaClient) {
   const r = Router();
-  r.use(verifyUser);
+  r.use(verifyUser); 
 
-  // 1. LEER CONFIGURACIÓN
+  // 1. LEER CONFIGURACIÓN (Traducción BD -> Frontend)
   r.get("/config", async (req: Request, res: Response) => {
     try {
       const [temas, ruleta, checklist] = await Promise.all([
@@ -19,9 +19,16 @@ export default function adminRouter(prisma: PrismaClient) {
       temas.forEach(t => {
           temasObj[t.id] = {
               label: t.label,
-              persona: { nombre: t.personaNombre || "", bio: t.personaBio || "", img: t.personaImg || "" },
+              persona: { 
+                  nombre: t.personaNombre || "", 
+                  bio: t.personaBio || "", 
+                  img: t.personaImg || "" 
+              },
               desafios: t.desafios.map(d => ({
-                  id: d.id, titulo: d.titulo, descripcion: d.descripcion, img: d.imgUrl || ""
+                  id: d.id, 
+                  titulo: d.titulo, 
+                  descripcion: d.descripcion, 
+                  img: d.imgUrl || "" // 🔥 TRADUCCIÓN CLAVE: imgUrl a img
               }))
           };
       });
@@ -41,10 +48,10 @@ export default function adminRouter(prisma: PrismaClient) {
           ruleta: ruletaFrontend.length > 0 ? ruletaFrontend : null,
           checklist: checklistFrontend.length > 0 ? checklistFrontend : null
       });
-    } catch (e) { res.status(500).json({ error: "Error cargando config" }); }
+    } catch (e) { res.status(500).json({ error: "Error config" }); }
   });
 
-  // 2. GUARDAR TEMAS (REAL)
+  // 2. GUARDAR TEMAS (Traducción Frontend -> BD)
   r.post("/themes", async (req: Request, res: Response) => {
     const themesObj = req.body; 
     try {
@@ -56,37 +63,23 @@ export default function adminRouter(prisma: PrismaClient) {
                     update: { label: t.label, personaNombre: t.persona?.nombre, personaBio: t.persona?.bio, personaImg: t.persona?.img },
                     create: { id: key, label: t.label, personaNombre: t.persona?.nombre, personaBio: t.persona?.bio, personaImg: t.persona?.img }
                 });
+
                 await tx.desafio.deleteMany({ where: { temaId: key } });
+                
                 if (t.desafios && t.desafios.length > 0) {
                     await tx.desafio.createMany({
                         data: t.desafios.map((d: any) => ({
-                            temaId: key, titulo: d.titulo, descripcion: d.descripcion, imgUrl: d.img
+                            temaId: key, 
+                            titulo: d.titulo, 
+                            descripcion: d.descripcion, 
+                            imgUrl: d.img // 🔥 TRADUCCIÓN CLAVE: img a imgUrl
                         }))
                     });
                 }
             }
         });
         res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: "Error guardando temas" }); }
-  });
-
-  // 3. GUARDAR RULETA
-  r.post("/roulette", async (req: Request, res: Response) => {
-      const items = req.body; 
-      try {
-          await prisma.$transaction(async (tx) => {
-              await tx.opcionRuleta.deleteMany();
-              for(const item of items) {
-                  await tx.opcionRuleta.create({
-                      data: {
-                          label: item.label, descripcion: item.desc, tipo: item.type,
-                          delta: Number(item.delta), peso: Number(item.weight), color: item.color
-                      }
-                  });
-              }
-          });
-          res.json({ ok: true });
-      } catch(e) { res.status(500).json({error:"Error ruleta"}); }
+    } catch (e) { res.status(500).json({ error: "Error saving" }); }
   });
 
   // 4. GUARDAR CHECKLIST
