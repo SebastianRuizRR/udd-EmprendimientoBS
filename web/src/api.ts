@@ -3,11 +3,11 @@ import {
   joinRoom as joinRoomMock 
 } from "./api"; 
 
-// ==========================================
-// 1. CONFIGURACIÓN DE RED (PRODUCCIÓN AWS)
-// ==========================================
+
 const CLOUD_URL = (import.meta as any).env?.VITE_API_URL || "http://18.191.239.111:4001";
 const BASE_URL = CLOUD_URL; 
+
+
 
 console.log("🔗 Conectando API a:", BASE_URL);
 

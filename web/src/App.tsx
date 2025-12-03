@@ -693,6 +693,7 @@ type Analytics = {
   roomsCreated: number;
   challengeUsage: Record<string, number>;
   teams: {
+    id?: number; 
     roomCode: string;
     teamName: string;
     integrantes: { nombre: string; carrera: string }[];
@@ -1605,6 +1606,7 @@ const goPrevStep = React.useCallback(() => {
            update(prevAnalytics => {
               const otros = prevAnalytics.teams.filter(t => t.roomCode !== syncRoomCode);
               const nuevos = serverState.equipos.map((e: any) => ({
+                 id: e.id, 
                  roomCode: syncRoomCode,
                  teamName: e.teamName, 
                  integrantes: e.integrantes,
