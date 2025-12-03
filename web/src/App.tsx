@@ -4359,33 +4359,28 @@ if (mode === "alumno") {
   label="✅ Confirmar y Entrar" 
   full={false} 
   disabled={!groupName} 
-  
   onClick={async () => {
-    const teamName = groupName.trim();
-    const studentName = miNombre.trim();
-
-    if (!studentName) {
-        return alert("Debes ingresar tu nombre de estudiante.");
+    if (!miNombre.trim()) {
+        return alert("Por favor, ingresa tu nombre de estudiante.");
     }
-    if (!teamName) {
-        return alert("Selecciona un equipo para confirmar."); 
+    if (!groupName.trim()) {
+        return alert("Debes seleccionar un equipo de la lista.");
     }
 
     try {
         const res: any = await joinRoom(activeRoom, { 
-            name: studentName, 
+            name: miNombre.trim(), 
             career: miCarrera.trim(), 
-            equipoNombre: teamName 
+            equipoNombre: groupName.trim()
         });
 
         if (res.equipoId) {
-            await setTeamReadyDB(res.equipoId);
+            await setTeamReadyDB(res.equipoId); 
         }
 
         setTeamReady(true);
-   
     } catch (e: any) {
-        alert("Error al unirse: " + e.message); 
+        alert("Error: " + e.message); 
     }
 }}
 />
