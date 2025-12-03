@@ -4319,6 +4319,7 @@ if (mode === "alumno") {
           {joinedRoom && !teamReady && (
             <>
 {flow.formation === "auto" ? (
+                {/* === MODO AUTO: Solo Selección de Equipo (Anónimo) === */}
 <Card title={`Sala ${activeRoom}`} subtitle="Selecciona tu equipo para ingresar" width={600}>
   
   <div style={{ textAlign: "left", marginBottom: 20 }}>

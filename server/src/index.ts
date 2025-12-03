@@ -22,7 +22,8 @@ app.use(express.json());
 app.get("/health", (_req, res) => {
   res.status(200).json({ ok: true, t: Date.now(), db: "connected" });
 });
-
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Registrar todas las rutas
 app.use("/auth", authRouter(prisma));
 app.use("/salas", salasRouter(prisma));
