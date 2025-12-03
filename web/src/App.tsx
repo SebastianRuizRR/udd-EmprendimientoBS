@@ -16,6 +16,7 @@ import {
   updateTeamData, 
   submitPeerEvaluation, 
   getTeamIdByName,
+  setTeamReadyDB,
 
   // Carga Masiva (Excel)
   uploadTeamsBatch,
@@ -29,7 +30,6 @@ import {
   getUsersDB,
   deleteUserDB,
   createUserDB,
-  setTeamReadyDB,
   // Analíticas
   getAnalytics
 } from "./api";

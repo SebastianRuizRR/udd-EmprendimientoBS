@@ -1,8 +1,3 @@
-import { 
-  createRoom as createRoomMock, 
-  joinRoom as joinRoomMock 
-} from "./api"; 
-
 
 const CLOUD_URL = (import.meta as any).env?.VITE_API_URL || "http://3.139.79.95:4001";
 const BASE_URL = CLOUD_URL; 
@@ -122,11 +117,7 @@ export async function joinRoom(roomCode: string, student: any) {
   });
 }
 
-// 🔥 FUNCIÓN FALTANTE: MARCAR EQUIPO COMO LISTO (Corresponde a PATCH /equipos/:id/ready)
-export async function setTeamReadyDB(equipoId: number) {
-  return request<any>(`/equipos/${equipoId}/ready`, "PATCH", {});
-}
-// -------------------------------------------------------------------------------------
+
 
 export async function getRoomState(roomCode: string) {
   try {
@@ -216,4 +207,8 @@ export async function deleteUserDB(id: string) {
 
 export async function createUserDB(data: { name: string; user: string; pass: string; isAdmin?: boolean }) {
   return request<any>("/admin/users", "POST", data);
+}
+
+export async function setTeamReadyDB(equipoId: number) {
+  return request<any>(`/equipos/${equipoId}/ready`, "PATCH", {});
 }
