@@ -4355,15 +4355,27 @@ if (mode === "alumno") {
                       label="⬅ Salir"
                       full={false}
                     />
-                    <Btn 
+<Btn 
   label="✅ Confirmar y Entrar" 
   full={false} 
   disabled={!groupName} 
-onClick={async () => {
+  
+  onClick={async () => {
+    const teamName = groupName.trim();
+    const studentName = miNombre.trim();
+
+    if (!studentName) {
+        return alert("Debes ingresar tu nombre de estudiante.");
+    }
+    if (!teamName) {
+        return alert("Selecciona un equipo para confirmar."); 
+    }
+
     try {
         const res: any = await joinRoom(activeRoom, { 
-            name: "Alumno", 
-            equipoNombre: groupName 
+            name: studentName, 
+            career: miCarrera.trim(), 
+            equipoNombre: teamName 
         });
 
         if (res.equipoId) {
@@ -4371,10 +4383,10 @@ onClick={async () => {
         }
 
         setTeamReady(true);
+   
     } catch (e: any) {
-    const message = e.message || "Error desconocido al unirse.";
-    alert("Error: " + message);
-}
+        alert("Error al unirse: " + e.message); 
+    }
 }}
 />
                   </div>
