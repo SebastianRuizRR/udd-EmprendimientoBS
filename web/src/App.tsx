@@ -2929,7 +2929,7 @@ const [checklistConfig, setChecklistConfig] = useState<any[]>(DEFAULT_CHECKLIST)
             maxSpins={maxSpins}
             setMaxSpins={setMaxSpins}
             THEMES={THEMES}
-            setTHEMES={saveTHEMES}
+            setTHEMES={(v:any) => { setTHEMES(v); saveThemesConfig(v); }}
             flow={flow}
             onBack={() => setMode("inicio")}
             ranking={ranking}
@@ -4747,48 +4747,25 @@ if (mode === "alumno") {
             (() => {
               const confirmChoice = async () => {
                 const tId = temaSel as keyof typeof THEMES;
-                
-                // 1. Validaciones básicas
-                const valid =
-                  tId &&
-                  THEMES[tId] &&
-                  desafioIndex >= 0 &&
-                  desafioIndex < (THEMES[tId].desafios?.length || 0);
-                  
-                if (!valid) {
-                  alert("Elige una temática y un desafío.");
-                  return;
-                }
+                const valid = tId && THEMES[tId] && desafioIndex >= 0 && desafioIndex < (THEMES[tId].desafios?.length || 0);
+                if (!valid) return alert("Elige una temática y un desafío.");
 
-                // 2. Obtener el ID real del desafío (si viene de la DB)
                 const desafioReal = THEMES[tId].desafios[desafioIndex];
                 const desafioIdDB = (desafioReal as any).id; 
 
-                // 3. Obtener el ID de mi equipo (Usando el helper getMyTeamId)
                 const tid = getMyTeamId();
 
-                if (tid) {
+                if (tid && desafioIdDB) {
                     try {
-                        // 4. GUARDAR EN BASE DE DATOS (Vinculamos equipo con desafío)
-                        // Nota: Si 'desafioIdDB' no existe (ej. modo local), enviamos null o manejamos el error
-                        if (desafioIdDB) {
-                            await updateTeamData(tid, { desafioId: Number(desafioIdDB) });
-                        }
+                        await updateTeamData(tid, { desafioId: Number(desafioIdDB) });
                         
-                        // 5. Guardar métrica de uso
                         incrementChallengeUsage(tId, desafioIndex);
                         
-                        // 6. Feedback visual
                         setConfirmed(true);
-                        alert("¡Desafío confirmado y guardado en la nube!");
-                        
-                    } catch (e) {
-                        console.error(e);
-                        alert("Error al guardar tu elección en el servidor.");
-                    }
+                        alert("¡Desafío guardado en la nube!");
+                    } catch (e) { alert("Error al guardar selección."); }
                 } else {
-                    // Fallback si no encontramos el equipo
-                    alert("Error: No se pudo identificar tu equipo para guardar los datos.");
+                    alert("Error: No se encontró tu equipo en la base de datos.");
                 }
               };
 
@@ -5599,14 +5576,16 @@ function ThemeEditor({ THEMES, setTHEMES, flow, publish }: any) {
   const [pitchSec, setPitchSec] = useState(flow.pitchSeconds ?? 90);
 
   const saveAll = async () => {
+    // 1. Guardar Tiempos (Sala)
     publish({ 
         f0Seconds: f0Sec, f1Seconds: f1Sec, f2Seconds: f2Sec, 
         f3Seconds: f3Sec, f4PrepSeconds: f4PrepSec, pitchSeconds: pitchSec 
     });
 
+
     await setTHEMES(localThemes);
     
-    alert("¡Tiempos y Temas guardados en la Base de Datos!");
+    alert("¡Todo guardado en la Base de Datos!");
   };
 
   const updateChallenge = (idx: number, field: string, val: string) => {
@@ -5731,33 +5710,30 @@ const SESSIONS_KEY = "udd_sessions_log_v1";
 
 function AdminDashboard({
   analytics, THEMES, setTHEMES, flow, onBack, ranking, clearMetrics, activeRoom, publish,
-  rouletteConfig, saveRouletteConfig, checklistConfig, saveChecklistConfig
+  rouletteConfig, saveRouletteConfig,
+  checklistConfig, saveChecklistConfig,
+  // 🔥 AGREGADO: Recibir estas props
+  maxSpins, setMaxSpins 
 }: any) {
   const [tab, setTab] = useState<"resumen" | "profesores" | "sesiones" | "temas" | "ruleta" | "checklist" | "analitica">("resumen");
   const [stats, setStats] = useState({ users: 0, rooms: 0, teams: 0, challenges: {} });
 
-  // Estados de Datos
   const [professors, setProfessors] = useState<any[]>([]); 
   const [newProf, setNewProf] = useState({ name: "", user: "", pass: "" });
-  const [sessions, setSessions] = useState<any[]>([]); // Estado para sesiones
+  const [sessions, setSessions] = useState<any[]>([]);
 
-  // --- EFECTO UNIFICADO DE CARGA ---
   useEffect(() => {
-    // Cargar Stats
     if (tab === "resumen" || tab === "analitica") {
         getAnalytics().then(setStats).catch(console.error);
     }
-    // Cargar Profesores
     if (tab === "profesores") {
         getUsersDB().then(setProfessors).catch(console.error);
     }
-    // 🔥 CARGAR SESIONES REALES
     if (tab === "sesiones") {
         getSessionsDB().then(setSessions).catch(console.error);
     }
   }, [tab]);
 
-  // Funciones de Profesores
   const addProf = async () => {
       if (!newProf.name || !newProf.user || !newProf.pass) return alert("Completa todos los campos");
       try {
@@ -5765,32 +5741,27 @@ function AdminDashboard({
           const updated = await getUsersDB();
           setProfessors(updated);
           setNewProf({ name: "", user: "", pass: "" });
-          alert("Profesor creado exitosamente.");
+          alert("Usuario creado.");
       } catch(e) { alert("Error: El usuario ya existe."); }
   };
 
   const deleteProf = async (id: string) => {
-      if (confirm("¿Estás seguro de eliminar este usuario de la Base de Datos?")) {
+      if (confirm("¿Eliminar usuario?")) {
           try {
              await deleteUserDB(id); 
              setProfessors(prev => prev.filter(p => String(p.id) !== String(id)));
-             alert("Usuario eliminado correctamente.");
+             alert("Eliminado.");
           } catch (e) { alert("Error al eliminar."); }
       }
   };
 
   return (
-    <Card title="Panel de Administrador Maestro" subtitle="Gestión Global" width={1100}>
+    <Card title="Panel de Administrador" subtitle="Gestión Global" width={1100}>
       {/* MENU */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20, borderBottom:'1px solid #eee', paddingBottom:15 }}>
         {[
-            ["resumen", "📊 Resumen"],
-            ["profesores", "👨‍🏫 Profesores"],
-            ["sesiones", "📅 Historial"],
-            ["temas", "🎯 Contenido"],
-            ["ruleta", "🎡 Ruleta"],
-            ["checklist", "✅ Checklist"],
-            ["analitica", "📈 Datos"],
+            ["resumen", "📊 Resumen"], ["profesores", "👨‍🏫 Profesores"], ["sesiones", "📅 Historial"],
+            ["temas", "🎯 Contenido"], ["ruleta", "🎡 Ruleta"], ["checklist", "✅ Checklist"], ["analitica", "📈 Datos"]
         ].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k as any)}
             style={{
@@ -5810,18 +5781,9 @@ function AdminDashboard({
       {/* PESTAÑAS */}
       {tab === "resumen" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 15 }}>
-           <div style={{...panelBox, textAlign:'center'}}>
-               <div style={{fontSize:32, fontWeight:900, color:theme.azul}}>{stats.users}</div>
-               <div style={{fontSize:12, color:'#666'}}>Usuarios Registrados</div>
-           </div>
-           <div style={{...panelBox, textAlign:'center'}}>
-               <div style={{fontSize:32, fontWeight:900, color:theme.rosa}}>{stats.rooms}</div>
-               <div style={{fontSize:12, color:'#666'}}>Salas Creadas</div>
-           </div>
-           <div style={{...panelBox, textAlign:'center'}}>
-               <div style={{fontSize:32, fontWeight:900, color:theme.verde}}>{stats.teams}</div>
-               <div style={{fontSize:12, color:'#666'}}>Equipos Totales</div>
-           </div>
+           <div style={{...panelBox, textAlign:'center'}}><div style={{fontSize:32, fontWeight:900, color:theme.azul}}>{stats.users}</div><div style={{fontSize:12, color:'#666'}}>Usuarios</div></div>
+           <div style={{...panelBox, textAlign:'center'}}><div style={{fontSize:32, fontWeight:900, color:theme.rosa}}>{stats.rooms}</div><div style={{fontSize:12, color:'#666'}}>Salas</div></div>
+           <div style={{...panelBox, textAlign:'center'}}><div style={{fontSize:32, fontWeight:900, color:theme.verde}}>{stats.teams}</div><div style={{fontSize:12, color:'#666'}}>Equipos</div></div>
         </div>
       )}
 
@@ -5829,17 +5791,12 @@ function AdminDashboard({
           <div style={{textAlign:'left'}}>
               <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
                   <div style={panelBox}>
-                      <h4 style={{marginTop:0}}>Listado de Docentes</h4>
+                      <h4 style={{marginTop:0}}>Usuarios en Base de Datos</h4>
                       <div style={{display:'grid', gap:8, maxHeight:300, overflowY:'auto'}}>
                           {professors.map(p => (
                               <div key={p.id} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:10, border:'1px solid #eee', borderRadius:8}}>
-                                  <div>
-                                      <div style={{fontWeight:700}}>{p.name} {p.isAdmin && "👑"}</div>
-                                      <div style={{fontSize:12, color:'#666'}}>User: {p.user}</div>
-                                  </div>
-                                  {!p.isAdmin && (
-                                      <button onClick={()=>deleteProf(p.id)} style={{color:'red', background:'transparent', border:'none', cursor:'pointer', fontWeight:'bold'}}>Eliminar</button>
-                                  )}
+                                  <div><div style={{fontWeight:700}}>{p.name} {p.isAdmin && "👑"}</div><div style={{fontSize:12, color:'#666'}}>User: {p.user}</div></div>
+                                  {!p.isAdmin && <button onClick={()=>deleteProf(p.id)} style={{color:'red', background:'transparent', border:'none', cursor:'pointer', fontWeight:'bold'}}>Eliminar</button>}
                               </div>
                           ))}
                       </div>
@@ -5854,40 +5811,34 @@ function AdminDashboard({
                              <input type="checkbox" id="isAdmin" onChange={e => setNewProf({...newProf, isAdmin: e.target.checked} as any)} />
                              <label htmlFor="isAdmin" style={{fontSize:13}}>Es Administrador</label>
                           </div>
-                          <Btn label="Guardar en DB" onClick={addProf} />
+                          <Btn label="Guardar" onClick={addProf} />
                       </div>
                   </div>
               </div>
           </div>
       )}
 
-      {/* 🔥 PESTAÑA SESIONES REALES */}
       {tab === "sesiones" && (
           <div style={{textAlign:'left'}}>
               <div style={panelBox}>
-                  <h4 style={{marginTop:0}}>Historial de Partidas ({sessions.length})</h4>
+                  <h4 style={{marginTop:0}}>Historial ({sessions.length})</h4>
                   <div style={{maxHeight:400, overflowY:'auto', display:'grid', gap:8}}>
                       {sessions.map((s, i) => (
                           <div key={i} style={{padding:12, border: '1px solid #eee', borderRadius:8, background: '#f9f9f9'}}>
-                              <div style={{display:'flex', justifyContent:'space-between', fontWeight:700}}>
-                                  <span>Sala: <span style={{color: theme.azul}}>{s.roomCode}</span></span>
-                                  <span style={{fontSize:12, color:'#666'}}>
-                                     {new Date(s.timestamp).toLocaleDateString()} {new Date(s.timestamp).toLocaleTimeString()}
-                                  </span>
-                              </div>
-                              <div style={{fontSize:13, marginTop:4}}>
-                                  Profesor: <b>{s.profName}</b> | Equipos: <b>{s.equiposCount}</b> | Estado: <b>{s.estado}</b>
-                              </div>
+                              <div style={{fontWeight:700}}>Sala: <span style={{color: theme.azul}}>{s.roomCode}</span></div>
+                              <div style={{fontSize:13}}>Profe: {s.profName} | Equipos: {s.equiposCount} | Estado: {s.estado}</div>
                           </div>
                       ))}
-                      {sessions.length === 0 && <div style={{padding:20, textAlign:'center', opacity:0.6}}>No hay sesiones registradas.</div>}
                   </div>
               </div>
           </div>
       )}
 
       {tab === "temas" && <ThemeEditor THEMES={THEMES} setTHEMES={setTHEMES} flow={flow} publish={publish} />}
-      {tab === "ruleta" && <RouletteEditor items={rouletteConfig} setItems={saveRouletteConfig} maxSpins={0} setMaxSpins={()=>{}} />}
+      
+      {/* 🔥 AQUÍ ESTÁ EL ARREGLO: PASAMOS maxSpins y setMaxSpins */}
+      {tab === "ruleta" && <RouletteEditor items={rouletteConfig} setItems={saveRouletteConfig} maxSpins={maxSpins} setMaxSpins={setMaxSpins} />}
+      
       {tab === "checklist" && <ChecklistEditor items={checklistConfig} setItems={saveChecklistConfig} />}
       {tab === "analitica" && <AdminAnalytics realData={stats} />}
     </Card>
