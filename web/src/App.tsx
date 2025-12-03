@@ -4274,8 +4274,42 @@ if (mode === "alumno") {
         )}
 
         <AutoCenter>
-{/* --- 1. LOGIN: SOLO CÓDIGO (SÚPER RÁPIDO) --- */}
-{/* --- 2. LOBBY: DATOS Y EQUIPO --- */}
+          {/* --- 1. LOGIN: SOLO CÓDIGO (VISTA RECUPERADA) --- */}
+          {!joinedRoom && (
+            <Card
+              title="Alumno"
+              subtitle="Ingresa el código para empezar"
+              width={400}
+            >
+              <input
+                placeholder="Código de sala (Ej: ABC12)"
+                value={roomCode}
+                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                style={{
+                  ...baseInput,
+                  textAlign: "center",
+                  fontWeight: 900,
+                  fontSize: 24,
+                  letterSpacing: 4,
+                  textTransform: "uppercase",
+                  marginBottom: 20,
+                  height: 60
+                }}
+                onKeyDown={(e) => e.key === "Enter" && handleJoinRoom()}
+              />
+              <Btn onClick={handleJoinRoom} label="Ingresar" />
+              <div style={{marginTop: 10}}>
+                <Btn
+                  onClick={() => setMode("inicio")}
+                  bg="transparent"
+                  fg={theme.texto}
+                  label="Volver"
+                  full={false}
+                  style={{boxShadow:'none', fontSize: 14}}
+                />
+              </div>
+            </Card>
+          )}
           {joinedRoom && flow.step === "lobby" && !teamReady && (
             <>
               {flow.formation === "auto" ? (
