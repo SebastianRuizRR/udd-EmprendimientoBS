@@ -4312,30 +4312,21 @@ if (mode === "alumno") {
           )}
           {joinedRoom && flow.step === "lobby" && !teamReady && (
             <>
-              {flow.formation === "auto" ? (
-                // === MODO AUTO: Nombre + Selección ===
-                <Card title={`Sala ${activeRoom}`} subtitle="Únete a tu equipo" width={600}>
-                  {/* 1. Input Nombre (Obligatorio por Backend) */}
-                  <div style={{marginBottom: 15, textAlign: 'left'}}>
-                      <label style={{fontWeight:700, fontSize:12, color:'#666'}}>TU NOMBRE</label>
-                      <input 
-                          placeholder="Ej: Juan Pérez"
-                          value={miNombre}
-                          onChange={e => setMiNombre(e.target.value)}
-                          style={baseInput}
-                      />
-                  </div>
-
-                  {/* 2. Selector de Equipo */}
+{flow.formation === "auto" ? (
+                // === MODO AUTO: Solo Selección de Equipo (Anónimo) ===
+                <Card title={`Sala ${activeRoom}`} subtitle="Selecciona tu equipo para ingresar" width={600}>
+                  
+                  {/* 1. SOLO SELECTOR DE EQUIPO */}
                   <div style={{ textAlign: "left", marginBottom: 20 }}>
-                    <label style={{fontWeight:700, fontSize:12, color:'#666'}}>ELIGE TU EQUIPO</label>
+                    <label style={badgeTitle}>Tu Equipo</label>
                     <select
                       value={groupName}
                       onChange={(e) => setGroupName(e.target.value)}
                       style={{ ...baseInput, padding: 12, fontSize: 16 }}
                     >
-                      <option value="">-- Seleccionar --</option>
+                      <option value="">-- Elige de la lista --</option>
                       {getTeamsForRoom(analytics, activeRoom).map((t: any, i) => {
+                        // Manejo robusto de nombres (string u objeto)
                         const nombre = typeof t === "object" ? t.teamName || t.nombre : t;
                         return <option key={i} value={nombre}>{nombre}</option>;
                       })}
@@ -4346,21 +4337,41 @@ if (mode === "alumno") {
                     <Btn onClick={() => setJoinedRoom("")} bg={theme.amarillo} fg={theme.texto} label="⬅ Salir" full={false} />
                     
                     <Btn 
-                      label="✅ Unirme" 
+                      label="✅ Confirmar y Entrar" 
                       full={false} 
-                      disabled={!groupName || !miNombre.trim()} 
+                      disabled={!groupName} // Solo se activa si eligió grupo
                       onClick={async () => {
-                          if(!miNombre.trim()) return alert("Ingresa tu nombre");
                           try {
-                              const res:any = await joinRoom(activeRoom, { 
-                                  name: miNombre, 
-                                  career: "", // En auto no pedimos carrera si no quieres
+                              // 1. Buscamos el ID del equipo ANTES de unirnos
+                              // (Necesitamos el ID para marcarlo como listo en la DB)
+                              // Buscamos en la data local que ya bajó el polling
+                              const teamData = analytics.teams.find(t => t.roomCode === activeRoom && t.teamName === groupName);
+                              
+                              // 2. Unirse con nombre Genérico (Para cumplir con la DB)
+                              await joinRoom(activeRoom, { 
+                                  name: "Participante", // Nombre fijo/anónimo
+                                  career: "", 
                                   equipoNombre: groupName 
                               });
                               
-                              if(res.equipoId) await setTeamReadyDB(res.equipoId);
+                              // 3. ENVIAR LA SEÑAL DE "LISTO" AL SERVIDOR
+                              // Esto es lo que hace subir el contador del profesor
+                              if (teamData && teamData.id) {
+                                  await setTeamReadyDB(teamData.id);
+                              } else {
+                                  // Fallback: Si no tenemos el ID a mano (raro), intentamos obtenerlo de nuevo
+                                  const refresh = await getRoomState(activeRoom);
+                                  const freshTeam = refresh?.equipos.find((e: any) => e.teamName === groupName);
+                                  if (freshTeam?.id) await setTeamReadyDB(freshTeam.id);
+                              }
+
+                              // 4. Éxito visual local
                               setTeamReady(true);
-                          } catch(e: any) { alert(e.message); }
+
+                          } catch(e: any) { 
+                              console.error(e);
+                              alert("Error al unirse: " + (e.message || "Intenta de nuevo")); 
+                          }
                       }} 
                     />
                   </div>
