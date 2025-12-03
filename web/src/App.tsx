@@ -3716,8 +3716,10 @@ const [checklistConfig, setChecklistConfig] = useState<any[]>(DEFAULT_CHECKLIST)
           )}
 
           {/* ===== PROFESOR: paso f2_theme ===== */}
+{/* ===== PROFESOR: paso f2_theme ===== */}
           {flow.step === "f2_theme" && (
             <>
+              {/* Selector de temas (se mantiene igual) */}
               <ThemeChallengeSection
                 THEMES={THEMES}
                 temaSel={temaSel}
@@ -3727,6 +3729,7 @@ const [checklistConfig, setChecklistConfig] = useState<any[]>(DEFAULT_CHECKLIST)
                 desafioActual={desafioActual}
                 isTablet={isTablet}
                 onContinue={() => {
+                  // Lógica local para métricas (opcional)
                   const tId = temaSel as keyof typeof THEMES;
                   if (!tId) return;
                   const key = `${String(tId)}#${desafioIndex}`;
@@ -3743,9 +3746,14 @@ const [checklistConfig, setChecklistConfig] = useState<any[]>(DEFAULT_CHECKLIST)
 
               {/* Panel contador + botón para abrir mapa */}
               {(() => {
-                const teams = getTeamsForRoom(analytics, activeRoom);
-                const ok = countConfirmedChoices(activeRoom, teams);
-                const need = flow.expectedTeams || teams.length || 0;
+                // 1. Filtrar equipos de ESTA sala desde la DB
+                const equiposEnSala = analytics.teams.filter(t => t.roomCode === activeRoom);
+                
+                // 2. Contar cuántos tienen un desafío guardado (desafioId no es null)
+                const ok = equiposEnSala.filter(t => t.desafioId !== null && t.desafioId !== undefined).length;
+                
+                // 3. Calcular meta (esperados o total real)
+                const need = flow.expectedTeams || equiposEnSala.length || 0;
 
                 return (
                   <div
@@ -3783,8 +3791,7 @@ const [checklistConfig, setChecklistConfig] = useState<any[]>(DEFAULT_CHECKLIST)
                     <Btn
                       label="Seguir con instrucciones"
                       onClick={() => {
-                        console.log("Botón clickeado");
-                        setStep("f2_instrucciones"); // Aquí agregamos el cambio de flujo
+                        setStep("f2_instrucciones"); 
                       }}
                       full={false}
                       disabled={ok < need}
@@ -4661,7 +4668,7 @@ if (mode === "alumno") {
                 targetHeight={560}
                 foundState={diffFound}
                 setFoundState={setDiffFound}
-                onFoundDiff={() => addCoins(1)}
+                onFoundDiff={() => addCoins(2)}
               />
 
               {/* Eliminamos el botón de avance del alumno */}
