@@ -159,7 +159,7 @@ export async function updateRoomState(roomCode: string, payload: any) {
     if (payload.remaining !== undefined) dbPayload.segundosRestantes = payload.remaining;
     if (payload.running !== undefined) dbPayload.timerCorriendo = payload.running;
     if (payload.formation !== undefined) dbPayload.formacion = payload.formation;
-    
+    if (payload.estado !== undefined) dbPayload.estado = payload.estado;
     if (payload.wheel || payload.presentOrder) {
        dbPayload.datosJuego = {
           wheel: payload.wheel,

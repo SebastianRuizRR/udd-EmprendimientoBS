@@ -2560,7 +2560,7 @@ async function aplicarGruposSugeridos() {
     }
   }
 
-  function resetSalaActual(keepCode: boolean = true) {
+function resetSalaActual(keepCode: boolean = true) {
     const code = flow.roomCode;
     if (!code) {
       if(!keepCode) {
@@ -2569,6 +2569,16 @@ async function aplicarGruposSugeridos() {
       }
       return;
     }
+
+    // 1. AVISAR AL SERVIDOR (Si cerramos la sala definitivamente)
+    // Esto marca el estado como "FINALIZADA" en MySQL
+    if (!keepCode) {
+        updateRoomState(code, { estado: "FINALIZADA" })
+            .then(() => console.log("Sala cerrada en servidor"))
+            .catch(err => console.error("Error cerrando sala", err));
+    }
+
+    // 2. LIMPIEZA LOCAL (Borrar equipos listos de la memoria del navegador)
     const prevReady = readJSON<string[]>(READY_KEY, []);
     const newReady = prevReady.filter((id) => !id.startsWith(`${code}::`));
     writeJSON(READY_KEY, newReady);
@@ -2580,6 +2590,8 @@ async function aplicarGruposSugeridos() {
         })
       );
     } catch {}
+
+    // 3. LIMPIEZA DE MONEDAS/PUNTOS LOCALES
     const prevCoins = readJSON<Record<string, number>>(COINS_KEY, {});
     const newCoins: Record<string, number> = {};
     for (const [k, v] of Object.entries(prevCoins)) {
@@ -2594,6 +2606,8 @@ async function aplicarGruposSugeridos() {
         })
       );
     } catch {}
+
+    // 4. LIMPIEZA DE ANALÍTICAS LOCALES
     update((a) => {
       return {
         ...a,
@@ -2602,7 +2616,10 @@ async function aplicarGruposSugeridos() {
         feedbacks: a.feedbacks.filter((f) => f.roomCode !== code),
       };
     });
+
+    // 5. DECISIÓN: ¿MANTENER CÓDIGO O SALIR?
     if (keepCode) {
+      // Reinicio suave: Mismo código, estado limpio (Lobby)
       publish({
         step: "lobby",
         running: false,
@@ -2612,7 +2629,9 @@ async function aplicarGruposSugeridos() {
         currentIdx: 0,
         pitchSeconds: flow.pitchSeconds,
       });
+      alert("Sala reiniciada (se mantiene el código).");
     } else {
+      // Cierre total: Borrar código y salir al inicio
       publish({
         roomCode: "",
         step: "lobby",
@@ -2624,15 +2643,16 @@ async function aplicarGruposSugeridos() {
         pitchSeconds: flow.pitchSeconds,
       });
       setJoinedRoom("");
-      const url = new URL(window.location.href);
-      url.searchParams.delete("room");
-      window.history.replaceState({}, "", url.toString());
+      
+      // Limpiar URL
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("room");
+        window.history.replaceState({}, "", url.toString());
+      } catch {}
+      
       setMode("inicio");
-    }
-    if(!keepCode) {
-        alert("Sala cerrada. Vuelve a crear una nueva.");
-    } else {
-        alert("Sala reiniciada (se mantiene el código).");
+      alert("Sala cerrada y finalizada en la base de datos.");
     }
   }
 
@@ -4285,14 +4305,14 @@ if (mode === "alumno") {
               width={400}
             >
               <input
-                placeholder="Código de sala (Ej: ABC12)"
+                placeholder="Código de sala"
                 value={roomCode}
                 onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
                 style={{
                   ...baseInput,
                   textAlign: "center",
                   fontWeight: 900,
-                  fontSize: 24,
+                  fontSize: 12,
                   letterSpacing: 4,
                   textTransform: "uppercase",
                   marginBottom: 20,
