@@ -3294,8 +3294,9 @@ const saveChecklistConfig = (items: any[]) => {
                   >
                     {activeRoom}
                   </div>
+{/* CONTADOR REAL: Filtramos directamente desde la data completa */}
 <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12, padding: 10, background: "#f0f0f0", borderRadius: 8 }}>
-  Equipos listos: <b>{equiposReales.filter((t:any) => t.listo).length}</b> / <b>{flow.expectedTeams || 0}</b>
+  Equipos listos: <b>{analytics.teams.filter(t => t.roomCode === activeRoom && t.listo).length}</b> / <b>{flow.expectedTeams || equiposQty || 0}</b>
 </div>
                   <Btn
                     onClick={startFirstPhaseFromLobby}
