@@ -1,8 +1,9 @@
+// web/src/api.ts
 
-const CLOUD_URL = (import.meta as any).env?.VITE_API_URL || "http://3.139.79.95:4001";
+// 1. CONFIGURACIÓN DE RED
+// En Producción (AWS) usa la variable de entorno. En local usa el puerto 4001.
+const CLOUD_URL = (import.meta as any).env?.VITE_API_URL || "http://18.191.239.111:4001";
 const BASE_URL = CLOUD_URL; 
-
-
 
 console.log("🔗 Conectando API a:", BASE_URL);
 
@@ -30,16 +31,17 @@ async function request<T>(endpoint: string, method: string, body?: any): Promise
   const savedAuth = ProfAuth.getUser();
   const headers: HeadersInit = { 
       "Content-Type": "application/json",
-      // CAMBIO: Usamos 'Authorization' con el prefijo 'Bearer' (Estándar universal)
+      // Enviamos el ID para que el servidor sepa quiénes somos
       ...(savedAuth?.id ? { "Authorization": `Bearer ${savedAuth.id}` } : {}) 
   };
+
   const response = await fetch(`${BASE_URL}${endpoint}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   
-  // 2. Manejo de sesión expirada (Si el backend te patea con 401)
+  // Si el servidor dice 401 (No autorizado), cerramos la sesión
   if (response.status === 401) {
       console.warn("⛔ Sesión expirada o usuario eliminado.");
       ProfAuth.logout();
@@ -67,15 +69,13 @@ export const ProfAuth = {
 
       if (res.ok) {
         const data = await res.json();
-        
-        // --- CORRECCIÓN CRÍTICA: Guardar datos planos ---
+        // Guardamos los datos planos
         const authData: ProfAuthType = {
             user: data.user.username,
             pass: pass,
             id: String(data.user.id), 
             name: data.user.nombre
         };
-
         localStorage.setItem(PROF_KEY, JSON.stringify(authData));
         return true;
       }
@@ -101,7 +101,7 @@ export const ProfAuth = {
 export const ProfAuthLogic = ProfAuth;
 
 // ==========================================
-// FUNCIONES DE NEGOCIO
+// FUNCIONES DE NEGOCIO (CORE)
 // ==========================================
 
 export async function createRoom(payload: { hostName: string }) {
@@ -117,7 +117,10 @@ export async function joinRoom(roomCode: string, student: any) {
   });
 }
 
-
+// 🔥 ¡AQUÍ ESTÁ LA FUNCIÓN QUE FALTABA! 🔥
+export async function setTeamReadyDB(equipoId: number) {
+  return request<any>(`/equipos/${equipoId}/ready`, "PATCH", {});
+}
 
 export async function getRoomState(roomCode: string) {
   try {
@@ -132,8 +135,8 @@ export async function getRoomState(roomCode: string) {
          teamName: e.nombre,
          integrantes: e.integrantes || [],
          roomCode: roomCode,
-         listo: !!e.listo, // Necesario para el contador del profesor
-         id: e.id // Necesario para llamar a setTeamReadyDB
+         listo: !!e.listo, 
+         id: e.id 
       })) : [],
       wheel: data.datosJuego?.wheel,
       presentOrder: data.datosJuego?.presentOrder || []
@@ -150,7 +153,8 @@ export async function updateRoomState(roomCode: string, payload: any) {
     if (payload.remaining !== undefined) dbPayload.segundosRestantes = payload.remaining;
     if (payload.running !== undefined) dbPayload.timerCorriendo = payload.running;
     if (payload.formation !== undefined) dbPayload.formacion = payload.formation;
-    if (payload.estado !== undefined) dbPayload.estado = payload.estado;
+    if (payload.estado !== undefined) dbPayload.estado = payload.estado; // Para cerrar sala
+
     if (payload.wheel || payload.presentOrder) {
        dbPayload.datosJuego = {
           wheel: payload.wheel,
@@ -188,27 +192,7 @@ export async function saveChecklistConfigDB(i: any[]) { return request("/admin/c
 export async function uploadTeamsBatch(roomCode: string, teamsData: any[]) {
   return request(`/salas/${roomCode}/masivo`, "POST", { equipos: teamsData });
 }
-
-// --- ANALYTICS ---
-export async function getAnalytics() {
-  return request<any>("/admin/analytics", "GET");
-}
-
-
-
-// --- GESTIÓN DE USUARIOS ---
-export async function getUsersDB() {
-  return request<any[]>("/admin/users", "GET");
-}
-
-export async function deleteUserDB(id: string) {
-  return request<any>(`/admin/users/${id}`, "DELETE");
-}
-
-export async function createUserDB(data: { name: string; user: string; pass: string; isAdmin?: boolean }) {
-  return request<any>("/admin/users", "POST", data);
-}
-
-export async function setTeamReadyDB(equipoId: number) {
-  return request<any>(`/equipos/${equipoId}/ready`, "PATCH", {});
-}
+export async function getUsersDB() { return request<any[]>("/admin/users", "GET"); }
+export async function deleteUserDB(id: string) { return request<any>(`/admin/users/${id}`, "DELETE"); }
+export async function createUserDB(data: any) { return request<any>("/admin/users", "POST", data); }
+export async function getAnalytics() { return request<any>("/admin/analytics", "GET"); }
