@@ -1,40 +1,36 @@
+import { Request, Response, NextFunction } from "express";
 import { PrismaClient } from "@prisma/client";
-import { Router } from "express";
-import { z } from "zod";
-import { verifyUser } from "../middleware/auth.js";
 
-const loginSchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1),
-  nombre: z.string().optional(),
-});
+const prisma = new PrismaClient();
 
-export default function authRouter(prisma: PrismaClient) {
-  const r = Router();
+// AQUÍ SE "CREA" EL GUARDIA. NO SE IMPORTA.
+export const verifyUser = async (req: Request, res: Response, next: NextFunction) => {
+  // 1. Buscamos el header estándar 'authorization'
+  const authHeader = req.headers.authorization; 
 
-  // LOGIN ESTRICTO (Solo usuarios existentes)
-  r.post("/login", async (req, res) => {
-    const parse = loginSchema.safeParse(req.body);
-    if (!parse.success) return res.status(400).json({ error: "Datos inválidos" });
+  if (!authHeader) {
+    return res.status(401).json({ error: "Falta autorización" });
+  }
 
-    const { username, password } = parse.data;
+  // 2. Extraemos el ID (quitamos la palabra "Bearer ")
+  const tokenParts = authHeader.split(" ");
+  if (tokenParts.length !== 2 || tokenParts[0] !== "Bearer") {
+      return res.status(401).json({ error: "Formato inválido" });
+  }
+  
+  const userId = tokenParts[1];
 
-    const user = await prisma.usuario.findUnique({ where: { username } });
+  try {
+    const user = await prisma.usuario.findUnique({
+      where: { id: Number(userId) }
+    });
 
-    // SI NO EXISTE O CLAVE MAL -> ERROR
-    if (!user || user.password !== password) {
-      return res.status(401).json({ error: "Credenciales incorrectas" });
+    if (!user) {
+      return res.status(401).json({ error: "Usuario eliminado" });
     }
 
-    res.json({ 
-      ok: true, 
-      user: { id: user.id, nombre: user.nombre, username: user.username, esAdmin: user.esAdmin } 
-    });
-  });
-
-  r.get("/verify", verifyUser, (req, res) => {
-      res.json({ ok: true, msg: "Sesión válida" });
-  });
-
-  return r;
-}
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: "Error de verificación" });
+  }
+};
