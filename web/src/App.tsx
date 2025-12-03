@@ -8,8 +8,6 @@ import {
   health,
   createRoom, 
   joinRoom, 
-
-  // Sincronización y Estado
   getRoomState, 
   updateRoomState, 
   updateTeamScore, 
@@ -582,19 +580,7 @@ const CHOICE_KEY = "udd_choice_v1";
 /* ====== FOTOS DE PROTOTIPO (por sala/equipo) ====== */
 const PHOTOS_KEY = "udd_team_photos_v1";
 
-function saveTeamPhoto(roomCode: string, teamName: string, dataUrl: string) {
-  const all = readJSON<Record<string, string>>(PHOTOS_KEY, {});
-  all[teamKey(roomCode, teamName)] = dataUrl;
-  writeJSON(PHOTOS_KEY, all);
-  try {
-    window.dispatchEvent(
-      new StorageEvent("storage", {
-        key: PHOTOS_KEY,
-        newValue: JSON.stringify(all),
-      })
-    );
-  } catch {}
-}
+
 
 function getTeamPhoto(roomCode: string, teamName: string) {
   const all = readJSON<Record<string, string>>(PHOTOS_KEY, {});
@@ -625,31 +611,7 @@ function teamKey(roomCode: string, teamName: string) {
   return `${roomCode}::${teamName}`;
 }
 
-/* guardar elección (y si está confirmada) */
-function saveTeamChoice(
-  roomCode: string,
-  teamName: string,
-  themeId: string,
-  desafioIndex: number,
-  confirmed: boolean
-) {
-  const all = readJSON<
-    Record<
-      string,
-      { themeId: string; desafioIndex: number; confirmed: boolean }
-    >
-  >(CHOICE_KEY, {});
-  all[teamKey(roomCode, teamName)] = { themeId, desafioIndex, confirmed };
-  writeJSON(CHOICE_KEY, all);
-  try {
-    window.dispatchEvent(
-      new StorageEvent("storage", {
-        key: CHOICE_KEY,
-        newValue: JSON.stringify(all),
-      })
-    );
-  } catch {}
-}
+
 
 /* leer elección de un equipo (o undefined) */
 function getTeamChoice(roomCode: string, teamName: string) {
@@ -699,6 +661,9 @@ type Analytics = {
     teamName: string;
     integrantes: { nombre: string; carrera: string }[];
     ts: number;
+    puntos?: number;
+    fotoLegoUrl?: string;
+    desafioId?: number;
   }[];
   reflections: {
     roomCode: string;
@@ -809,26 +774,31 @@ const publish = (next: Partial<FlowState>) => {
     });
   };
 
+// Dentro de useSharedFlow...
+  
   useEffect(() => {
     if (!isTeacher || !flow.running) return;
+    
     const id = window.setInterval(() => {
       setFlow((f) => {
         const left = Math.max(0, f.remaining - 1);
         const nf = { ...f, remaining: left, running: left > 0 && f.running };
+        
         writeJSON(FLOW_KEY, nf);
-        try {
-          window.dispatchEvent(
-            new StorageEvent("storage", {
-              key: FLOW_KEY,
-              newValue: JSON.stringify(nf),
-            })
-          );
-        } catch {}
+        try { window.dispatchEvent(new StorageEvent("storage", { key: FLOW_KEY, newValue: JSON.stringify(nf) })); } catch {}
+
+        if (f.roomCode) {
+            updateRoomState(f.roomCode, { remaining: left, running: nf.running })
+                .catch(e => console.error("Error sync timer", e));
+        }
+        
         return nf;
       });
     }, 1000);
+    
     return () => window.clearInterval(id);
   }, [isTeacher, flow.running]);
+
   const setStep = (step: FlowStep, remaining?: number) =>
     publish({ step, remaining: remaining ?? flow.remaining, running: false });
   const startTimer = (seconds?: number) =>
@@ -1313,6 +1283,9 @@ useEffect(() => {
     }
   }, [flow.step]); // <- importante: depende del step
 
+  
+
+
   // === F4 helpers (definir dentro de App, debajo de resetTimer) ===
   const hardResetPitch = React.useCallback(() => {
     const seconds = flow.pitchSeconds ?? 90;
@@ -1593,13 +1566,14 @@ const goPrevStep = React.useCallback(() => {
       const serverState = await getRoomState(syncRoomCode);
       
       if (serverState) {
-        // 1. Actualizamos el flujo (Esto cambia "manual" a "auto" en la pantalla del alumno)
         setFlow(prev => ({
           ...prev,
           step: serverState.step,
-          remaining: serverState.remaining,
-          running: serverState.running,
-          formation: serverState.formation // <--- CLAVE PARA EL CAMBIO DE VISTA
+          // 🔥 CORRECCIÓN: Si soy Profe, MANTENGO mi tiempo local. Si soy alumno, obedezco al server.
+          remaining: mode === 'prof' ? prev.remaining : serverState.remaining,
+          running: mode === 'prof' ? prev.running : serverState.running,
+          
+          formation: serverState.formation
         }));
 
         if (serverState.equipos) {
@@ -1793,17 +1767,14 @@ const handleSmartReset = () => {
   }, [coins, teamId, mode, teamReady]);
 
   const ranking = useMemo(() => {
-    const map = readJSON<Record<string, number>>(COINS_KEY, {});
-    const ready = readyTeamNames(activeRoom);
-    const pairs = Object.entries(map)
-      .filter(([id]) => id.startsWith(`${activeRoom}::`))
-      .map(([id, v]) => ({
-        equipo: id.split("::")[1] || "Equipo",
-        total: v || 0,
-      }))
-      .filter(({ equipo }) => ready.has(equipo));
+    const pairs = analytics.teams
+      .filter(t => t.roomCode === activeRoom)
+      .map(t => ({
+        equipo: t.teamName,
+        total: t.puntos || 0 
+      }));
     return pairs.sort((a, b) => b.total - a.total);
-  }, [activeRoom, flow.step, storageTick]);
+  }, [analytics, activeRoom]);
 
   type Diff = {
     x: number;
@@ -1832,7 +1803,7 @@ const handleSmartReset = () => {
           dy = d.y - cy;
         const dist = Math.hypot(dx, dy);
         if (dist < d.r) {
-          setCoins((c) => c + 1);
+          addCoins(1);
           return { ...d, found: true };
         }
         return d;
@@ -1844,7 +1815,7 @@ const handleSmartReset = () => {
     const hidden = diffs.find((d) => !d.found);
     if (!hidden) return;
     setHintsLeft((h) => h - 1);
-    setCoins((c) => Math.max(0, c - 1));
+    addCoins(-1);
     const tip = document.createElement("div");
     Object.assign(tip.style, {
       position: "absolute",
@@ -1922,7 +1893,7 @@ const handleSmartReset = () => {
     setEmpatia((prev) => {
       const wasEmpty = !prev[k]?.trim();
       const next = { ...prev, [k]: v };
-      if (wasEmpty && next[k].trim()) setCoins((c) => c + 1);
+      if (wasEmpty && next[k].trim()) addCoins(1);
       return next;
     });
   };
@@ -2006,9 +1977,7 @@ const defaultTHEMES: any = {
   },
 };
 
-  const [THEMES, setTHEMES] = useState<ThemeConfig>(() =>
-    readJSON<ThemeConfig>(THEMES_KEY, defaultTHEMES)
-  );
+  const [THEMES, setTHEMES] = useState<ThemeConfig>(defaultTHEMES);
   const saveTHEMES = (next: ThemeConfig) => {
     setTHEMES(next);
     writeJSON(THEMES_KEY, next);
@@ -2055,7 +2024,21 @@ const bubbleHelpers: Record<string, string> = {
     }
   }, [flow.step, flow.currentIdx, activeRoom]);
 
-  // === CONTADOR: uso de desafíos por selección del ALUMNO ===
+
+  const getMyTeamId = useCallback(() => {
+      const t = analytics.teams.find(t => t.roomCode === activeRoom && t.teamName === groupName);
+      return t?.id;
+  }, [analytics, activeRoom, groupName]);
+
+  const addCoins = useCallback((amount: number) => {
+      setCoins(prev => prev + amount); 
+      
+      const tid = getMyTeamId();
+      if (tid) {
+          updateTeamScore(tid, amount).catch(e => console.error("Error guardando puntos:", e));
+      }
+  }, [getMyTeamId]);
+
   const incrementChallengeUsage = React.useCallback(
     (themeId: keyof typeof THEMES, idx: number) => {
       try {
@@ -2318,8 +2301,7 @@ const bubbleHelpers: Record<string, string> = {
     );
   };
 // Configuración Ruleta
-const [rouletteConfig, setRouletteConfig] = useState<any[]>(() => readJSON(ROULETTE_KEY, DEFAULT_ROULETTE));
-const saveRouletteConfig = (items: any[]) => {
+const [rouletteConfig, setRouletteConfig] = useState<any[]>(DEFAULT_ROULETTE);const saveRouletteConfig = (items: any[]) => {
     setRouletteConfig(items);
     writeJSON(ROULETTE_KEY, items);
 };
@@ -2726,8 +2708,7 @@ useEffect(() => {
     setMode("inicio");
   }
 // Configuración Checklist
-const [checklistConfig, setChecklistConfig] = useState<any[]>(() => readJSON(CHECKLIST_KEY, DEFAULT_CHECKLIST));
-const saveChecklistConfig = (items: any[]) => {
+const [checklistConfig, setChecklistConfig] = useState<any[]>(DEFAULT_CHECKLIST);const saveChecklistConfig = (items: any[]) => {
     setChecklistConfig(items);
     writeJSON(CHECKLIST_KEY, items);
 };
@@ -4144,7 +4125,7 @@ const saveChecklistConfig = (items: any[]) => {
                 pauseTimer={pauseTimer} 
                 
                 onReset={handleSmartReset} 
-                
+                analytics={analytics}
                 remaining={flow.remaining}
              />
           )}
@@ -4680,7 +4661,7 @@ if (mode === "alumno") {
                 targetHeight={560}
                 foundState={diffFound}
                 setFoundState={setDiffFound}
-                onFoundDiff={() => setCoins((c) => c + 1)}
+                onFoundDiff={() => addCoins(1)}
               />
 
               {/* Eliminamos el botón de avance del alumno */}
@@ -4731,36 +4712,53 @@ if (mode === "alumno") {
               </Card>
             </>
           )}
-          {flow.step === "f2_theme" &&
+{flow.step === "f2_theme" &&
             (() => {
-              const myTeamName = teamId.split("::")[1] || "Equipo";
-
-              const confirmChoice = () => {
+              const confirmChoice = async () => {
                 const tId = temaSel as keyof typeof THEMES;
+                
+                // 1. Validaciones básicas
                 const valid =
                   tId &&
                   THEMES[tId] &&
                   desafioIndex >= 0 &&
                   desafioIndex < (THEMES[tId].desafios?.length || 0);
+                  
                 if (!valid) {
                   alert("Elige una temática y un desafío.");
                   return;
                 }
 
-                // ✅ AUMENTAR USO — ESTE ES EL LUGAR
-                incrementChallengeUsage(tId, desafioIndex);
+                // 2. Obtener el ID real del desafío (si viene de la DB)
+                const desafioReal = THEMES[tId].desafios[desafioIndex];
+                const desafioIdDB = (desafioReal as any).id; 
 
-                // guarda la elección del equipo (no cambia de fase)
-                saveTeamChoice(
-                  activeRoom,
-                  myTeamName,
-                  String(tId),
-                  Number(desafioIndex),
-                  true
-                );
+                // 3. Obtener el ID de mi equipo (Usando el helper getMyTeamId)
+                const tid = getMyTeamId();
 
-                setConfirmed(true);
-                alert("¡Desafío confirmado para tu equipo!");
+                if (tid) {
+                    try {
+                        // 4. GUARDAR EN BASE DE DATOS (Vinculamos equipo con desafío)
+                        // Nota: Si 'desafioIdDB' no existe (ej. modo local), enviamos null o manejamos el error
+                        if (desafioIdDB) {
+                            await updateTeamData(tid, { desafioId: Number(desafioIdDB) });
+                        }
+                        
+                        // 5. Guardar métrica de uso
+                        incrementChallengeUsage(tId, desafioIndex);
+                        
+                        // 6. Feedback visual
+                        setConfirmed(true);
+                        alert("¡Desafío confirmado y guardado en la nube!");
+                        
+                    } catch (e) {
+                        console.error(e);
+                        alert("Error al guardar tu elección en el servidor.");
+                    }
+                } else {
+                    // Fallback si no encontramos el equipo
+                    alert("Error: No se pudo identificar tu equipo para guardar los datos.");
+                }
               };
 
               return (
@@ -4772,11 +4770,11 @@ if (mode === "alumno") {
                   setDesafioIndex={setDesafioIndex}
                   desafioActual={desafioActual}
                   isTablet={isTablet}
-                  // IMPORTANTE: aquí no avanzamos la fase. Solo confirmamos.
+                  // Acción conectada a la DB
                   onContinue={confirmChoice}
                   confirmLabel="Elegir desafío"
                   confirmed={confirmed}
-                  hideConfirm={false} // mostrar botón azul en alumno
+                  hideConfirm={false} 
                 />
               );
             })()}
@@ -4991,27 +4989,32 @@ if (mode === "alumno") {
                           accept="image/*"
                           style={{display: 'none'}}
                           onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            const reader = new FileReader();
-                            reader.onload = () => {
-                              const dataUrl = String(reader.result || "");
-                              const teamName = teamId.split("::")[1] || "Equipo";
-                              saveTeamPhoto(activeRoom, teamName, dataUrl);
-                              alert("¡Foto guardada!");
-                              
-                              // Lógica automática: Marcar "Foto clara" si no estaba marcada
-                              // Busca el valor dinámico configurado por el admin para el ítem "foto"
-                              const photoItem = checklistConfig.find((i:any) => i.id === 'foto');
-                              const val = photoItem ? (photoItem.value || 3) : 3;
-
-                              if (!completedTasks["foto"]) {
-                                  setCompletedTasks(prev => ({ ...prev, "foto": true }));
-                                  setCoins(c => c + val);
-                              }
-                            };
-                            reader.readAsDataURL(file);
-                          }}
+  const file = e.target.files?.[0];
+  if (!file) return;
+  
+  // Comprimir y convertir a Base64
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const dataUrl = String(reader.result || "");
+    
+    // ENVIAR A LA BASE DE DATOS
+    const tid = getMyTeamId();
+    if (tid) {
+        // Guardamos en la columna 'fotoLegoUrl'
+        await updateTeamData(tid, { fotoLegoUrl: dataUrl });
+        alert("¡Foto guardada en la nube!");
+        
+        // Lógica de checklist (puntos)
+        if (!completedTasks["foto"]) {
+            setCompletedTasks(prev => ({ ...prev, "foto": true }));
+            addCoins(3); // Usamos la nueva función
+        }
+    } else {
+        alert("Error: No se encontró tu equipo para guardar la foto.");
+    }
+  };
+  reader.readAsDataURL(file);
+}}
                         />
                         <span style={{fontWeight: 700, color: theme.azul}}>📷 Seleccionar archivo</span>
                     </label>
@@ -6110,12 +6113,11 @@ function ThemeChallengeSection({
 }
 
 function PresentStageTeacher({
-  currentTeam, onNext, pitchSec, startTimer, pauseTimer, onReset, remaining, activeRoom
+  currentTeam, onNext, pitchSec, startTimer, pauseTimer, onReset, remaining, activeRoom, analytics
 }: any) {
-  // Recuperar foto del equipo actual desde el almacenamiento local o estado
-  // Nota: Asegúrate de que 'getTeamPhoto' esté definido en tu App.tsx o impórtalo
-  const photo = getTeamPhoto(activeRoom, currentTeam); 
 
+const teamData = analytics.teams.filter((t: any) => t.roomCode === activeRoom && t.listo)
+const photo = teamData?.fotoLegoUrl || "";
   return (
     <div style={{ width: "clamp(320px, 95vw, 1100px)", margin: "0 auto" }}>
       
