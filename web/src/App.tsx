@@ -18,7 +18,6 @@ import {
 
   // Carga Masiva (Excel)
   uploadTeamsBatch,
-
   // Configuración Admin (Base de Datos)
   getConfig, 
   saveThemesConfig, 
@@ -1340,8 +1339,7 @@ publish({
   }, 4500);
 }
 
-  // Cambiar al siguiente equipo en presentaciones
-  // ---- Cambiar al siguiente equipo ----
+
   const goNextTeam = React.useCallback(() => {
     const total = flow.presentOrder?.length || 0;
     if (total === 0) return;
@@ -1349,8 +1347,8 @@ publish({
     const nextIdx = (flow.currentIdx ?? 0) + 1;
 
     if (nextIdx >= total) {
-      // Último equipo -> pasar a F5
-      setStep("f5_podium"); // <- un solo dueño del cambio de fase
+      // Último equipo -> pasar a Podio
+      setStep("f5_podium"); 
       publish({
         currentIdx: null,
         running: false,
@@ -1361,55 +1359,32 @@ publish({
       publish({
         currentIdx: nextIdx,
         running: false,
-        // (NO seteamos step aquí)
       });
-      resetTimer(flow.pitchSeconds || 90);
-      setStep("f4_present", flow.pitchSeconds); // <- step aquí, sin publicar currentIdx otra vez
+      
+      // 🔥 ASEGURAR EL TIEMPO CONFIGURADO
+      const tiempoPitch = flow.pitchSeconds || 90; 
+      
+      resetTimer(tiempoPitch);
+      setStep("f4_present", tiempoPitch); 
     }
-  }, [
-    flow.presentOrder,
-    flow.currentIdx,
-    flow.pitchSeconds,
-    publish,
-    resetTimer,
-    setStep,
-  ]);
+  }, [flow.presentOrder, flow.currentIdx, flow.pitchSeconds, publish, resetTimer, setStep]);
 
-  // Arrancar juego desde LOBBY respetando Fase 0
-  function startFirstPhaseFromLobby() {
-    const sec = flow.f0Seconds ?? 3 * 60;
+
+// Función para iniciar el juego desde el Lobby
+  const startFirstPhaseFromLobby = () => {
+    // Usar el tiempo configurado o 3 minutos por defecto
+    const sec = flow.f0Seconds ?? 180;
+    
     if (flow.includeF0) {
+      // Si hay Fase 0, vamos a las instrucciones F0
       resetTimer(sec);
       publish({ running: false });
       setStep("f0_instr", sec);
     } else {
+      // Si no, saltamos directo al video de la Fase 1
       setStep("f1_video");
     }
-  }
-
-  // Efecto para sonido de alarma
-// --- CORRECCIÓN ALARMA TIMER ---
-useEffect(() => {
-  // Si el tiempo llega a 0 y NO hemos tocado la alarma aún
-  if (flow.remaining === 0 && !lastPlayedZeroRef.current && flow.expectedTeams > 0) {
-      if (isTeacher) {
-          playAlarm(); // Sonido
-      }
-      // Notificación visual
-      setShowTimeEndNotification(true);
-      setTimeout(() => setShowTimeEndNotification(false), 4000);
-      
-      // Marcamos que ya sonó para este cero
-      lastPlayedZeroRef.current = true;
-  } 
-  // Si el tiempo se resetea (es mayor a 1), reseteamos la marca
-  else if (flow.remaining > 1) {
-      lastPlayedZeroRef.current = false;
-  }
-}, [flow.remaining, isTeacher, flow.expectedTeams]);
-
-
-
+  };
 
 const goPrevStep = React.useCallback(() => {
   const s = flow.step;
@@ -3513,13 +3488,14 @@ const [checklistConfig, setChecklistConfig] = useState<any[]>(DEFAULT_CHECKLIST)
                 }}
               >
                 <Btn
-                  onClick={() => {
-                    resetTimer(flow.f1Seconds || 300);
-                    setStep("f1_activity", 5 * 60);
-                  }}
-                  label="Abrir juegos y timer"
-                  full={false}
-                />
+  onClick={() => {
+    const tiempo = flow.f1Seconds || 300; // Usa config o 5 min por defecto
+    resetTimer(tiempo);
+    setStep("f1_activity", tiempo);
+  }}
+  label="Abrir juegos y timer"
+  full={false}
+/>
               </div>
             </>
           )}
@@ -3633,15 +3609,16 @@ const [checklistConfig, setChecklistConfig] = useState<any[]>(DEFAULT_CHECKLIST)
                 }}
               >
                 <Btn
-                  onClick={() => {
-                    const sec = flow.f0Seconds ?? 3 * 60;
-                    resetTimer(flow.f0Seconds || 180);
-                    publish({ running: false });
-                    setStep("f0_activity", sec);
-                  }}
-                  label="Iniciar Fase 1"
-                  full={false}
-                />
+  label="Iniciar Fase 1"
+  full={false}
+  onClick={() => {
+    // USAR TIEMPO CONFIGURADO (Default: 180 seg / 3 min)
+    const tiempo = flow.f0Seconds || 180; 
+    resetTimer(tiempo);
+    publish({ running: false });
+    setStep("f0_activity", tiempo);
+  }}
+/>
               </div>
             </Card>
           )}
@@ -3893,10 +3870,14 @@ const [checklistConfig, setChecklistConfig] = useState<any[]>(DEFAULT_CHECKLIST)
                 }}
               >
                 <Btn
-                  onClick={() => setStep("f2_activity")}
-                  label="Abrir BubbleMap y Timer"
-                  full={false}
-                />
+  onClick={() => {
+    const tiempo = flow.f2Seconds || 300; // Usa config o 5 min por defecto
+    resetTimer(tiempo);
+    setStep("f2_activity", tiempo);
+  }}
+  label="Abrir BubbleMap y Timer"
+  full={false}
+/>
               </div>
             </>
           )}
@@ -3996,15 +3977,14 @@ const [checklistConfig, setChecklistConfig] = useState<any[]>(DEFAULT_CHECKLIST)
                 }}
               >
                 <Btn
-                  onClick={() => {
-                    // CORRECCIÓN: Usar tiempo dinámico F3
-                    const sec = flow.f3Seconds || 900; 
-                    resetTimer(sec);
-                    setStep("f3_activity", sec);
-                  }}
-                  label={`Iniciar Construcción (${Math.round((flow.f3Seconds||900)/60)} min) ▶`}
-                  full={false}
-                />
+  onClick={() => {
+    const tiempo = flow.f3Seconds || 900; 
+    resetTimer(tiempo);
+    setStep("f3_activity", tiempo);
+  }}
+  label={`Iniciar Construcción (${Math.round((flow.f3Seconds || 900)/60)} min) ▶`}
+  full={false}
+/>
               </div>
             </>
           )}
@@ -4099,14 +4079,14 @@ const [checklistConfig, setChecklistConfig] = useState<any[]>(DEFAULT_CHECKLIST)
                 }}
               >
                 <Btn
-                  onClick={() => {
-                    const sec = flow.f4PrepSeconds || 600;
-                    resetTimer(sec);
-                    setStep("f4_prep", sec); 
-                  }}
-                  label={`Iniciar preparación (${Math.round((flow.f4PrepSeconds || 600)/60)} min) ▶`}
-                  full={false}
-                />
+  onClick={() => {
+    const tiempo = flow.f4PrepSeconds || 600; // Usa config o 10 min por defecto
+    resetTimer(tiempo);
+    setStep("f4_prep", tiempo); 
+  }}
+  label={`Iniciar preparación (${Math.round((flow.f4PrepSeconds || 600)/60)} min) ▶`}
+  full={false}
+/>
               </div>
             </>
           )}
@@ -5588,15 +5568,21 @@ function awardCoinsToTeam(roomCode: string, teamName: string, delta: number) {
     );
   } catch {}
 }
-
 function ThemeEditor({ THEMES, setTHEMES, flow, publish }: any) {
   const [activeTab, setActiveTab] = React.useState<"times" | "content">("content");
   const [selectedTheme, setSelectedTheme] = React.useState<string>("salud");
   const [openChallengeIdx, setOpenChallengeIdx] = React.useState<number | null>(null);
   
+  // Estado local para editar sin spammear al servidor
+  const [localThemes, setLocalThemes] = useState(THEMES);
+
+  // Sincronizar si cambian las props (ej: carga inicial)
+  useEffect(() => { setLocalThemes(THEMES); }, [THEMES]);
+
   const [showCropper, setShowCropper] = React.useState(false);
   const [cropperTargetIdx, setCropperTargetIdx] = React.useState<number | null>(null);
 
+  // Tiempos
   const [f0Sec, setF0Sec] = useState(flow.f0Seconds ?? 180);
   const [f1Sec, setF1Sec] = useState(flow.f1Seconds ?? 300);
   const [f2Sec, setF2Sec] = useState(flow.f2Seconds ?? 300);
@@ -5604,22 +5590,32 @@ function ThemeEditor({ THEMES, setTHEMES, flow, publish }: any) {
   const [f4PrepSec, setF4PrepSec] = useState(flow.f4PrepSeconds ?? 600);
   const [pitchSec, setPitchSec] = useState(flow.pitchSeconds ?? 90);
 
-  const saveAll = () => {
-    publish({ f0Seconds: f0Sec, f1Seconds: f1Sec, f2Seconds: f2Sec, f3Seconds: f3Sec, f4PrepSeconds: f4PrepSec, pitchSeconds: pitchSec });
-    alert("¡Cambios guardados!");
+  const saveAll = async () => {
+    publish({ 
+        f0Seconds: f0Sec, f1Seconds: f1Sec, f2Seconds: f2Sec, 
+        f3Seconds: f3Sec, f4PrepSeconds: f4PrepSec, pitchSeconds: pitchSec 
+    });
+
+    await setTHEMES(localThemes);
+    
+    alert("¡Tiempos y Temas guardados en la Base de Datos!");
   };
 
   const updateChallenge = (idx: number, field: string, val: string) => {
-    const newThemes = { ...THEMES };
-    newThemes[selectedTheme].desafios[idx][field] = val;
-    setTHEMES(newThemes);
+    const newThemes = { ...localThemes };
+    if (newThemes[selectedTheme] && newThemes[selectedTheme].desafios[idx]) {
+        newThemes[selectedTheme].desafios[idx][field] = val;
+        setLocalThemes(newThemes); 
+    }
   };
 
   const handleImageSave = (dataUrl: string) => {
     if (cropperTargetIdx === null) return;
-    const newThemes = { ...THEMES };
-    newThemes[selectedTheme].desafios[cropperTargetIdx].img = dataUrl; 
-    setTHEMES(newThemes);
+    const newThemes = { ...localThemes };
+    if (newThemes[selectedTheme]?.desafios[cropperTargetIdx]) {
+        newThemes[selectedTheme].desafios[cropperTargetIdx].img = dataUrl; 
+        setLocalThemes(newThemes);
+    }
     setShowCropper(false);
   };
 
@@ -5632,7 +5628,7 @@ function ThemeEditor({ THEMES, setTHEMES, flow, publish }: any) {
           onClick={() => setActiveTab(activeTab === "times" ? "content" : "times")}
           style={{ width: "100%", padding: 16, background: "#E3F2FD", border: "none", textAlign: "left", fontWeight: 900, color: theme.azul, display: "flex", justifyContent: "space-between", cursor: "pointer", fontSize: 16 }}
         >
-          <span>⏱️ Ajustes de Tiempos</span>
+          <span>⏱️ Ajustes de Tiempos (Segundos)</span>
           <span>{activeTab === "times" ? "▲" : "▼"}</span>
         </button>
         
@@ -5664,13 +5660,13 @@ function ThemeEditor({ THEMES, setTHEMES, flow, publish }: any) {
                 <button key={k} onClick={() => { setSelectedTheme(k); setOpenChallengeIdx(null); }}
                   style={{ padding: "8px 16px", borderRadius: 20, cursor: "pointer", fontWeight: 700, border: "none", background: selectedTheme === k ? theme.azul : "#eee", color: selectedTheme === k ? "#fff" : "#666" }}
                 >
-                  {THEMES[k].label}
+                  {THEMES[k as any]?.label || k}
                 </button>
               ))}
             </div>
 
             <div style={{ display: "grid", gap: 10 }}>
-              {THEMES[selectedTheme].desafios.map((d: any, i: number) => {
+              {THEMES[selectedTheme]?.desafios.map((d: any, i: number) => {
                 const isOpen = openChallengeIdx === i;
                 return (
                   <div key={i} style={{ border: "1px solid #ddd", borderRadius: 12, overflow: "hidden" }}>

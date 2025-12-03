@@ -131,41 +131,56 @@ export async function getRoomState(roomCode: string) {
       running: data.timerCorriendo ?? false,
       formation: data.formacion || "manual", 
       expectedTeams: data.equiposEsperados || 0,
+      
+      // 🔥 MAPEO DE TIEMPOS (BD -> Frontend)
+      f0Seconds: data.t_rompehielo,
+      f1Seconds: data.t_diferencias,
+      f2Seconds: data.t_empatia,
+      f3Seconds: data.t_creatividad,
+      f4PrepSeconds: data.t_pitch_prep,
+      pitchSeconds: data.t_pitch_fuego,
+
       equipos: Array.isArray(data.equipos) ? data.equipos.map((e: any) => ({
          teamName: e.nombre,
          integrantes: e.integrantes || [],
          roomCode: roomCode,
-         listo: !!e.listo, 
-         id: e.id 
+         listo: !!e.listo,
+         id: e.id,
+         puntos: e.puntos,
+         fotoLegoUrl: e.foto,
+         desafioId: e.desafioId
       })) : [],
       wheel: data.datosJuego?.wheel,
       presentOrder: data.datosJuego?.presentOrder || []
     };
-  } catch (e) {
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
 export async function updateRoomState(roomCode: string, payload: any) {
   try {
     const dbPayload: any = {};
+    
+    // Mapeos básicos
     if (payload.step !== undefined) dbPayload.faseActual = payload.step;
     if (payload.remaining !== undefined) dbPayload.segundosRestantes = payload.remaining;
     if (payload.running !== undefined) dbPayload.timerCorriendo = payload.running;
     if (payload.formation !== undefined) dbPayload.formacion = payload.formation;
-    if (payload.estado !== undefined) dbPayload.estado = payload.estado; // Para cerrar sala
+    if (payload.estado !== undefined) dbPayload.estado = payload.estado;
+
+    // 🔥 MAPEO DE TIEMPOS (Frontend -> BD)
+    if (payload.f0Seconds !== undefined) dbPayload.t_rompehielo = payload.f0Seconds;
+    if (payload.f1Seconds !== undefined) dbPayload.t_diferencias = payload.f1Seconds;
+    if (payload.f2Seconds !== undefined) dbPayload.t_empatia = payload.f2Seconds;
+    if (payload.f3Seconds !== undefined) dbPayload.t_creatividad = payload.f3Seconds;
+    if (payload.f4PrepSeconds !== undefined) dbPayload.t_pitch_prep = payload.f4PrepSeconds;
+    if (payload.pitchSeconds !== undefined) dbPayload.t_pitch_fuego = payload.pitchSeconds;
 
     if (payload.wheel || payload.presentOrder) {
-       dbPayload.datosJuego = {
-          wheel: payload.wheel,
-          presentOrder: payload.presentOrder
-       };
+       dbPayload.datosJuego = { wheel: payload.wheel, presentOrder: payload.presentOrder };
     }
 
     return await request<any>(`/salas/${roomCode}/estado`, "PATCH", dbPayload);
-  } catch (e) {
-    console.error("Error sync state", e);
-  }
+  } catch (e) { console.error("Error sync state", e); }
 }
 
 export async function updateTeamScore(equipoId: number, delta: number) {
