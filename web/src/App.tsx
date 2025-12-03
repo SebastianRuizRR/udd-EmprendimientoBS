@@ -1,6 +1,5 @@
 // App.tsx
 import { 
-  // Funciones Core
   API, 
   ProfAuth, 
   ProfAuthType, 
@@ -15,21 +14,22 @@ import {
   submitPeerEvaluation, 
   getTeamIdByName,
   setTeamReadyDB,
-  getSessionsDB,
-  // Carga Masiva (Excel)
+
   uploadTeamsBatch,
-  // Configuración Admin (Base de Datos)
+
   getConfig, 
   saveThemesConfig, 
   saveRouletteConfigDB, 
   saveChecklistConfigDB,
-  // Gestión de Usuarios Admin
+
   getUsersDB,
   deleteUserDB,
   createUserDB,
-  // Analíticas
-  getAnalytics
+
+  getAnalytics,
+  getSessionsDB 
 } from "./api";
+
 import React, {
   useEffect,
   useLayoutEffect,
@@ -1556,6 +1556,7 @@ const goPrevStep = React.useCallback(() => {
   const syncRoomCode = flow.roomCode || joinedRoom;
 
   useEffect(() => {
+    const code = flow.roomCode || joinedRoom;
     if (!syncRoomCode) return;
 
     const interval = setInterval(async () => {
@@ -1575,19 +1576,22 @@ const goPrevStep = React.useCallback(() => {
         }));
 
         if (serverState.equipos) {
-           update(prevAnalytics => {
-              const otros = prevAnalytics.teams.filter(t => t.roomCode !== syncRoomCode);
+           update(prev => {
+              const otros = prev.teams.filter(t => t.roomCode !== code);
               
               const nuevos = serverState.equipos.map((e: any) => ({
-                 id: e.id,               
-                 listo: e.listo,       
-                 roomCode: syncRoomCode,
+                 id: e.id,            
+                 listo: !!e.listo,    
+                 puntos: e.puntos || 0,   
+                 fotoLegoUrl: e.foto, 
+                 desafioId: e.desafioId, 
+                 
+                 roomCode: code,
                  teamName: e.teamName, 
                  integrantes: e.integrantes,
                  ts: Date.now()
               }));
-              
-              return { ...prevAnalytics, teams: [...otros, ...nuevos] };
+              return { ...prev, teams: [...otros, ...nuevos] };
            });
         }
       }
@@ -2543,24 +2547,25 @@ async function aplicarGruposSugeridos() {
   }
 
 function resetSalaActual(keepCode: boolean = true) {
+    // 1. DEFINIR LA VARIABLE 'code' (CRUCIAL)
     const code = flow.roomCode;
+
     if (!code) {
-      if(!keepCode) {
+      if (!keepCode) {
           setJoinedRoom("");
           setMode("inicio");
       }
       return;
     }
 
-    // 1. AVISAR AL SERVIDOR (Si cerramos la sala definitivamente)
-    // Esto marca el estado como "FINALIZADA" en MySQL
+    // 2. AVISAR AL SERVIDOR (Ahora 'code' existe y funciona)
     if (!keepCode) {
         updateRoomState(code, { estado: "FINALIZADA" })
             .then(() => console.log("Sala cerrada en servidor"))
             .catch(err => console.error("Error cerrando sala", err));
     }
 
-    // 2. LIMPIEZA LOCAL (Borrar equipos listos de la memoria del navegador)
+    // 3. LIMPIEZA LOCAL (Usando 'code')
     const prevReady = readJSON<string[]>(READY_KEY, []);
     const newReady = prevReady.filter((id) => !id.startsWith(`${code}::`));
     writeJSON(READY_KEY, newReady);
@@ -2573,7 +2578,6 @@ function resetSalaActual(keepCode: boolean = true) {
       );
     } catch {}
 
-    // 3. LIMPIEZA DE MONEDAS/PUNTOS LOCALES
     const prevCoins = readJSON<Record<string, number>>(COINS_KEY, {});
     const newCoins: Record<string, number> = {};
     for (const [k, v] of Object.entries(prevCoins)) {
@@ -2589,7 +2593,6 @@ function resetSalaActual(keepCode: boolean = true) {
       );
     } catch {}
 
-    // 4. LIMPIEZA DE ANALÍTICAS LOCALES
     update((a) => {
       return {
         ...a,
@@ -2599,9 +2602,8 @@ function resetSalaActual(keepCode: boolean = true) {
       };
     });
 
-    // 5. DECISIÓN: ¿MANTENER CÓDIGO O SALIR?
+    // 4. NAVEGACIÓN
     if (keepCode) {
-      // Reinicio suave: Mismo código, estado limpio (Lobby)
       publish({
         step: "lobby",
         running: false,
@@ -2613,7 +2615,6 @@ function resetSalaActual(keepCode: boolean = true) {
       });
       alert("Sala reiniciada (se mantiene el código).");
     } else {
-      // Cierre total: Borrar código y salir al inicio
       publish({
         roomCode: "",
         step: "lobby",
@@ -2625,14 +2626,11 @@ function resetSalaActual(keepCode: boolean = true) {
         pitchSeconds: flow.pitchSeconds,
       });
       setJoinedRoom("");
-      
-      // Limpiar URL
       try {
         const url = new URL(window.location.href);
         url.searchParams.delete("room");
         window.history.replaceState({}, "", url.toString());
       } catch {}
-      
       setMode("inicio");
       alert("Sala cerrada y finalizada en la base de datos.");
     }
