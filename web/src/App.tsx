@@ -3298,11 +3298,11 @@ const saveChecklistConfig = (items: any[]) => {
 <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12, padding: 10, background: "#f0f0f0", borderRadius: 8 }}>
   Equipos listos: <b>{analytics.teams.filter(t => t.roomCode === activeRoom && t.listo).length}</b> / <b>{flow.expectedTeams || equiposQty || 0}</b>
 </div>
-                  <Btn
-                    onClick={startFirstPhaseFromLobby}
-                    label="Continuar con todos"
-                    disabled={readyNow < flow.expectedTeams}
-                  />
+<Btn
+  onClick={startFirstPhaseFromLobby}
+  label="Continuar con todos"
+  disabled={analytics.teams.filter(t => t.roomCode === activeRoom && t.listo).length < (flow.expectedTeams || 0)}
+/>
                   <div
                     style={{
                       display: "flex",
