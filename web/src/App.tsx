@@ -698,6 +698,7 @@ type Analytics = {
     teamName: string;
     integrantes: { nombre: string; carrera: string }[];
     ts: number;
+    
   }[];
   reflections: {
     roomCode: string;
