@@ -2484,13 +2484,11 @@ async function aplicarGruposSugeridos() {
     if (!code) return alert("Primero crea una sala.");
     if (!recommendedGroups.length) return alert("No hay grupos sugeridos.");
 
-    // 1. PAUSAR LA ACTUALIZACIÓN AUTOMÁTICA
-    // Esto evita que el servidor te borre los grupos mientras se guardan
+    // 1. Pausar Polling
     isUploading.current = true;
 
     try {
-      // 2. MOSTRARLOS EN PANTALLA INMEDIATAMENTE (Visual)
-      // Así el profesor los ve instantáneamente y no hay parpadeo
+      // 2. Mostrar en pantalla inmediatamente
       update((prev) => {
         const otros = prev.teams.filter((t) => t.roomCode !== code);
         const nuevos = recommendedGroups.map((g, i) => ({
@@ -2499,58 +2497,68 @@ async function aplicarGruposSugeridos() {
           integrantes: [],
           ts: Date.now(),
           listo: false,
-          id: -1 // ID temporal visual
+          id: -1 * (i + 1)
         }));
         return { ...prev, teams: [...otros, ...nuevos] };
       });
 
-      // 3. ENVIAR A LA BASE DE DATOS
+      // 3. Enviar al Servidor
       const payload = recommendedGroups.map((g) => ({
         nombre: g.nombre,
         integrantes: []
       }));
-
       await uploadTeamsBatch(code, payload);
       
-      // 4. OBTENER LOS DATOS REALES (IDs) DEL SERVIDOR
-      // Hacemos una petición manual inmediata para tener los IDs reales para los alumnos
-      const serverCheck = await getRoomState(code);
-
-      if (serverCheck && serverCheck.equipos) {
-           update((prev) => {
-              const otros = prev.teams.filter((t) => t.roomCode !== code);
-              const nuevos = serverCheck.equipos.map((e: any) => ({
-                 id: e.id,
-                 listo: !!e.listo,
-                 puntos: e.puntos || 0,
-                 fotoLegoUrl: e.foto,
-                 desafioId: e.desafioId,
-                 roomCode: code,
-                 teamName: e.teamName,
-                 integrantes: e.integrantes,
-                 ts: Date.now()
-              }));
-              return { ...prev, teams: [...otros, ...nuevos] };
-           });
-      }
-
-      // 5. CONFIGURAR SALA Y LIMPIAR VISTA PREVIA
+      // 4. Configurar Sala
       publish({
         expectedTeams: recommendedGroups.length,
         formation: "auto",
         step: "lobby",
       });
 
-      // ¡ESTO QUITA LA VISTA DE EN MEDIO!
-      setRecommendedGroups([]); 
-      
-      alert(`✅ ${recommendedGroups.length} grupos cargados correctamente.`);
+      // 🔥 CAMBIO CRÍTICO: NO BORRAMOS LA LISTA DE SUGERENCIAS
+      // setRecommendedGroups([]); <--- ESTA LÍNEA SE ELIMINA
+
+      alert(`✅ ${recommendedGroups.length} grupos aplicados. La lista se mantiene visible.`);
+
+      // 5. Verificar confirmación del servidor
+      let intentos = 0;
+      const checkInterval = setInterval(async () => {
+          intentos++;
+          try {
+              const serverCheck = await getRoomState(code);
+              
+              if (serverCheck && serverCheck.equipos && serverCheck.equipos.length >= recommendedGroups.length) {
+                  clearInterval(checkInterval);
+                  update((prev) => {
+                      const otros = prev.teams.filter((t) => t.roomCode !== code);
+                      const nuevos = serverCheck.equipos.map((e: any) => ({
+                         id: e.id,
+                         listo: !!e.listo,
+                         puntos: e.puntos || 0,
+                         fotoLegoUrl: e.foto,
+                         desafioId: e.desafioId,
+                         roomCode: code,
+                         teamName: e.teamName,
+                         integrantes: e.integrantes,
+                         ts: Date.now()
+                      }));
+                      return { ...prev, teams: [...otros, ...nuevos] };
+                   });
+
+                  isUploading.current = false; 
+              } 
+              
+              if (intentos > 15) {
+                  clearInterval(checkInterval);
+                  isUploading.current = false;
+              }
+          } catch(e) { }
+      }, 1000); 
 
     } catch (error: any) {
       console.error(error);
       alert("Error al guardar: " + error.message);
-    } finally {
-      // 6. REANUDAR ACTUALIZACIÓN AUTOMÁTICA
       isUploading.current = false;
     }
   }
