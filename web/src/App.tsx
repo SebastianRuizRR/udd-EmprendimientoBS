@@ -2484,43 +2484,51 @@ async function aplicarGruposSugeridos() {
     if (!code) return alert("Primero crea una sala.");
     if (!recommendedGroups.length) return alert("No hay grupos sugeridos.");
 
+    // 1. PAUSAR POLLING (Para evitar parpadeo mientras sube)
     isUploading.current = true;
 
-
-    const visualGroups = recommendedGroups.map((g, i) => ({
-        roomCode: code,
-        teamName: g.nombre,
-        integrantes: [],
-        ts: Date.now(),
-        listo: false,
-        id: -1 * (i + 1) // ID temporal
-    }));
-
-    update((prev) => {
+    try {
+      // 2. ACTUALIZAR VISUALMENTE (Esto pone los grupos en la lista de abajo YA)
+      update((prev) => {
         const otros = prev.teams.filter((t) => t.roomCode !== code);
-        return { ...prev, teams: [...otros, ...visualGroups] };
-    });
+        // Creamos objetos visuales temporales
+        const nuevos = recommendedGroups.map((g, i) => ({
+          roomCode: code,
+          teamName: g.nombre,
+          integrantes: [],
+          ts: Date.now(),
+          listo: false,
+          id: -1 * (i + 1) 
+        }));
+        return { ...prev, teams: [...otros, ...nuevos] };
+      });
 
-    const payload = recommendedGroups.map((g) => ({
+      // 3. SUBIR AL SERVIDOR (En segundo plano)
+      const payload = recommendedGroups.map((g) => ({
         nombre: g.nombre,
         integrantes: []
-    }));
+      }));
+      
+      // Esperamos a que el servidor confirme que guardó
+      await uploadTeamsBatch(code, payload);
+      
+      // 4. CAMBIAR ESTADO DE SALA
+      publish({
+        expectedTeams: recommendedGroups.length,
+        formation: "auto",
+        step: "lobby",
+      });
 
-    uploadTeamsBatch(code, payload)
-        .then(() => {
-            console.log("✅ Grupos guardados en servidor.");
-            publish({
-                expectedTeams: recommendedGroups.length,
-                formation: "auto",
-                step: "lobby",
-            });
+      alert("✅ Grupos cargados correctamente.");
+      
+      // NOTA: NO borramos 'recommendedGroups', así que el Excel se queda visible.
 
-        })
-        .catch((e) => alert("Error guardando en servidor: " + e.message));
-
-    // 4. LIMPIEZA VISUAL
-    setRecommendedGroups([]); 
-    alert("✅ Grupos aplicados.");
+    } catch (error: any) {
+      alert("Error al guardar: " + error.message);
+    } finally {
+      // 5. SOLTAR EL BLOQUEO (Damos 2 segundos de margen técnico y soltamos)
+      setTimeout(() => { isUploading.current = false; }, 2000);
+    }
   }
 function resetSalaActual(keepCode: boolean = true) {
     // 1. DEFINIR LA VARIABLE 'code' (CRUCIAL)
