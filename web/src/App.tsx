@@ -2484,94 +2484,45 @@ async function aplicarGruposSugeridos() {
     if (!code) return alert("Primero crea una sala.");
     if (!recommendedGroups.length) return alert("No hay grupos sugeridos.");
 
-    // 1. PAUSAR POLLING (Vital para que no desaparezcan)
     isUploading.current = true;
 
     try {
-      // 2. MUESTRA VISUAL INMEDIATA (Optimismo)
-      // Ponemos los grupos en el Lobby YA, con IDs temporales
-      update((prev) => {
-        const otros = prev.teams.filter((t) => t.roomCode !== code);
-        const nuevos = recommendedGroups.map((g, i) => ({
-          roomCode: code,
-          teamName: g.nombre,
-          integrantes: [],
-          ts: Date.now(),
-          listo: false,
-          id: -1 * (i + 1) // ID temporal para que se vea
-        }));
-        return { ...prev, teams: [...otros, ...nuevos] };
-      });
-
-      // 3. LIMPIAR LA "VISTA DE EN MEDIO" (El Excel ya se aplicó)
-      setRecommendedGroups([]);
-
-      // 4. SUBIDA AL SERVIDOR
+      // 1. Subir a la BD
       const payload = recommendedGroups.map((g) => ({
         nombre: g.nombre,
         integrantes: []
       }));
-
-      // Enviamos y esperamos respuesta
       await uploadTeamsBatch(code, payload);
       
-      // 5. CONFIGURAR SALA
+      // 2. Configurar sala
       publish({
         expectedTeams: recommendedGroups.length,
         formation: "auto",
         step: "lobby",
       });
 
-      alert(`✅ ${recommendedGroups.length} grupos creados. Esperando confirmación del servidor...`);
+      // 3. Actualizar visualmente (sin borrar el Excel)
+      update((prev) => {
+        const otros = prev.teams.filter((t) => t.roomCode !== code);
+        // Usamos IDs temporales solo para que se vea lleno inmediatamente
+        const nuevos = recommendedGroups.map((g, i) => ({
+          roomCode: code,
+          teamName: g.nombre,
+          integrantes: [],
+          ts: Date.now(),
+          listo: false,
+          id: -1 * (i + 1) 
+        }));
+        return { ...prev, teams: [...otros, ...nuevos] };
+      });
 
-      // 6. ESPERA ACTIVA (EL BLINDAJE)
-      // No soltamos el bloqueo hasta estar 100% seguros de que el servidor tiene los datos
-      let intentos = 0;
-      const checkInterval = setInterval(async () => {
-          intentos++;
-          try {
-              // Preguntamos manualmente al servidor
-              const serverCheck = await getRoomState(code);
-              
-              // Si el servidor responde con los equipos correctos...
-              if (serverCheck && serverCheck.equipos && serverCheck.equipos.length >= payload.length) {
-                  clearInterval(checkInterval);
-                  
-                  // Actualizamos con los datos REALES (IDs reales) del servidor
-                  update((prev) => {
-                      const otros = prev.teams.filter((t) => t.roomCode !== code);
-                      const nuevos = serverCheck.equipos.map((e: any) => ({
-                         id: e.id,
-                         listo: !!e.listo,
-                         puntos: e.puntos || 0,
-                         fotoLegoUrl: e.foto,
-                         desafioId: e.desafioId,
-                         roomCode: code,
-                         teamName: e.teamName,
-                         integrantes: e.integrantes,
-                         ts: Date.now()
-                      }));
-                      return { ...prev, teams: [...otros, ...nuevos] };
-                   });
-
-                  // RECIÉN AHORA SOLTAMOS EL BLOQUEO
-                  isUploading.current = false; 
-                  console.log("✅ Sincronización completada y estable.");
-              } 
-              
-              // Timeout de seguridad (15s)
-              if (intentos > 15) {
-                  clearInterval(checkInterval);
-                  isUploading.current = false;
-                  console.warn("⚠️ Timeout esperando servidor. Se mantienen datos locales.");
-              }
-          } catch(e) { }
-      }, 1000); 
+      alert(`✅ Grupos aplicados. El Excel sigue visible abajo.`);
 
     } catch (error: any) {
-      console.error(error);
-      alert("Error crítico al guardar: " + error.message);
-      isUploading.current = false; // Soltar solo si hubo error fatal
+      alert("Error: " + error.message);
+    } finally {
+      // Soltamos el bloqueo rápido para que empiece a leer del servidor
+      setTimeout(() => { isUploading.current = false; }, 1000);
     }
   }
 function resetSalaActual(keepCode: boolean = true) {
@@ -4401,30 +4352,30 @@ if (mode === "alumno") {
                       full={false} 
                       disabled={!groupName} 
                       onClick={async () => {
-                          try {
-                              const teamData = analytics.teams.find(t => t.roomCode === activeRoom && t.teamName === groupName);
-                              
-                              await joinRoom(activeRoom, { 
-                                  name: "Participante", 
-                                  career: "", 
-                                  equipoNombre: groupName 
-                              });
-                              
-                              if (teamData && teamData.id) {
-                                  await setTeamReadyDB(teamData.id);
-                              } else {
-                                  const fresh = await getRoomState(activeRoom);
-                                  const freshTeam = fresh?.equipos.find((e:any) => e.teamName === groupName);
-                                  if (freshTeam?.id) await setTeamReadyDB(freshTeam.id);
-                              }
+    try {
+        // 1. Unirse (Creamos el integrante)
+        const res: any = await joinRoom(activeRoom, { 
+            name: "Participante", 
+            career: "", 
+            equipoNombre: groupName 
+        });
 
-                              setTeamReady(true);
+        // 2. Marcar listo INMEDIATAMENTE con el ID que nos acaba de dar el servidor
+        if (res && res.equipoId) {
+            await setTeamReadyDB(res.equipoId);
+        } else {
+            // Solo si falló la respuesta directa, buscamos en local
+            const t = analytics.teams.find(x => x.roomCode === activeRoom && x.teamName === groupName);
+            if(t?.id) await setTeamReadyDB(t.id);
+        }
 
-                          } catch(e: any) { 
-                              console.error(e);
-                              alert("Error al unirse: " + (e.message || "Intenta de nuevo")); 
-                          }
-                      }} 
+        // 3. Entrar visualmente
+        setTeamReady(true);
+
+    } catch (e: any) {
+        alert("Error al entrar: " + e.message);
+    }
+}}
                     />
                   </div>
                 </Card>
