@@ -2515,7 +2515,6 @@ async function aplicarGruposSugeridos() {
                 step: "lobby",
             });
 
-            setTimeout(() => { isUploading.current = false; }, 10000); 
         })
         .catch((e) => alert("Error guardando en servidor: " + e.message));
 
