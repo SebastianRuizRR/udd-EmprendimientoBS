@@ -11,33 +11,33 @@ services:
       MYSQL_PASSWORD: apppass
       MYSQL_ROOT_PASSWORD: rootpass
     volumes:
-      - dbdata_prod:/var/lib/mysql 
+      - dbdata_prod:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-prootpass"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-    server:
-      build: ./server
-      container_name: udd_server_prod
-      ports:
-        - "4001:4000"
-        - "5556:5555"
-      environment:
-        DATABASE_URL: "mysql://appuser:apppass@db:3306/appdb"
-        PORT: "4000"
-        NODE_ENV: "production"
-      command: sh -c "npm run start"
-
+  server:
+    build: ./server
+    container_name: udd_server_prod
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "4001:4000"
+      - "5556:5555"
+    environment:
+      DATABASE_URL: "mysql://appuser:apppass@db:3306/appdb"
+      PORT: "4000"
+      NODE_ENV: "production"
+    command: sh -c "npm run start"
 
   web:
     build:
       context: ./web
       args:
         - VITE_API_URL=http://3.139.79.95:4001
-
-
     container_name: udd_web_prod
     restart: always
     depends_on:
@@ -46,4 +46,4 @@ services:
       - "80:80"
 
 volumes:
-  dbdata_prod: 
+  dbdata_prod:
