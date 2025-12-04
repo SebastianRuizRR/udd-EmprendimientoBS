@@ -2486,44 +2486,42 @@ async function aplicarGruposSugeridos() {
 
     isUploading.current = true;
 
-    try {
-      // 1. Subir a la BD
-      const payload = recommendedGroups.map((g) => ({
+
+    const visualGroups = recommendedGroups.map((g, i) => ({
+        roomCode: code,
+        teamName: g.nombre,
+        integrantes: [],
+        ts: Date.now(),
+        listo: false,
+        id: -1 * (i + 1) // ID temporal
+    }));
+
+    update((prev) => {
+        const otros = prev.teams.filter((t) => t.roomCode !== code);
+        return { ...prev, teams: [...otros, ...visualGroups] };
+    });
+
+    const payload = recommendedGroups.map((g) => ({
         nombre: g.nombre,
         integrantes: []
-      }));
-      await uploadTeamsBatch(code, payload);
-      
-      // 2. Configurar sala
-      publish({
-        expectedTeams: recommendedGroups.length,
-        formation: "auto",
-        step: "lobby",
-      });
+    }));
 
-      // 3. Actualizar visualmente (sin borrar el Excel)
-      update((prev) => {
-        const otros = prev.teams.filter((t) => t.roomCode !== code);
-        // Usamos IDs temporales solo para que se vea lleno inmediatamente
-        const nuevos = recommendedGroups.map((g, i) => ({
-          roomCode: code,
-          teamName: g.nombre,
-          integrantes: [],
-          ts: Date.now(),
-          listo: false,
-          id: -1 * (i + 1) 
-        }));
-        return { ...prev, teams: [...otros, ...nuevos] };
-      });
+    uploadTeamsBatch(code, payload)
+        .then(() => {
+            console.log("✅ Grupos guardados en servidor.");
+            publish({
+                expectedTeams: recommendedGroups.length,
+                formation: "auto",
+                step: "lobby",
+            });
 
-      alert(`✅ Grupos aplicados. El Excel sigue visible abajo.`);
+            setTimeout(() => { isUploading.current = false; }, 10000); 
+        })
+        .catch((e) => alert("Error guardando en servidor: " + e.message));
 
-    } catch (error: any) {
-      alert("Error: " + error.message);
-    } finally {
-      // Soltamos el bloqueo rápido para que empiece a leer del servidor
-      setTimeout(() => { isUploading.current = false; }, 1000);
-    }
+    // 4. LIMPIEZA VISUAL
+    setRecommendedGroups([]); 
+    alert("✅ Grupos aplicados.");
   }
 function resetSalaActual(keepCode: boolean = true) {
     // 1. DEFINIR LA VARIABLE 'code' (CRUCIAL)
