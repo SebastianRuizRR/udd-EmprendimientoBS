@@ -2489,6 +2489,7 @@ async function aplicarGruposSugeridos() {
 
     try {
       // 2. MUESTRA VISUAL INMEDIATA (Para que no desaparezcan mientras cargan)
+      // Esto llena la lista de abajo instantáneamente
       update((prev) => {
         const otros = prev.teams.filter((t) => t.roomCode !== code);
         const nuevos = recommendedGroups.map((g, i) => ({
@@ -2497,7 +2498,7 @@ async function aplicarGruposSugeridos() {
           integrantes: [],
           ts: Date.now(),
           listo: false,
-          id: -1 * (i + 1) // ID temporal negativo
+          id: -1 * (i + 1) // ID temporal
         }));
         return { ...prev, teams: [...otros, ...nuevos] };
       });
@@ -2507,6 +2508,8 @@ async function aplicarGruposSugeridos() {
         nombre: g.nombre,
         integrantes: []
       }));
+      
+      // Enviamos los datos
       await uploadTeamsBatch(code, payload);
       
       // 4. CONFIGURACIÓN DE SALA
@@ -2516,21 +2519,22 @@ async function aplicarGruposSugeridos() {
         step: "lobby",
       });
 
-      alert(`✅ ${recommendedGroups.length} grupos enviados. Sincronizando...`);
+      alert(`✅ ${recommendedGroups.length} grupos cargados.`);
 
       // 5. EL TRUCO: BUCLE DE VERIFICACIÓN
       // No soltamos el bloqueo hasta que el servidor nos devuelva los datos reales
+      // Así la lista de abajo NUNCA parpadea ni se borra
       let intentos = 0;
       const checkInterval = setInterval(async () => {
           intentos++;
           try {
-              // Preguntamos al servidor: "¿Ya tienes los equipos?"
               const serverCheck = await getRoomState(code);
               
-              // Si el servidor responde con equipos, actualizamos y soltamos
+              // Si el servidor YA tiene los equipos, soltamos el bloqueo
               if (serverCheck && serverCheck.equipos && serverCheck.equipos.length >= recommendedGroups.length) {
                   clearInterval(checkInterval);
                   
+                  // Actualizamos con los IDs reales del servidor
                   update((prev) => {
                       const otros = prev.teams.filter(t => t.roomCode !== code);
                       const nuevos = serverCheck.equipos.map((e: any) => ({
@@ -2565,7 +2569,6 @@ async function aplicarGruposSugeridos() {
       isUploading.current = false;
     }
   }
-
 function resetSalaActual(keepCode: boolean = true) {
     // 1. DEFINIR LA VARIABLE 'code' (CRUCIAL)
     const code = flow.roomCode;
