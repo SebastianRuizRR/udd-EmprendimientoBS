@@ -2484,11 +2484,11 @@ async function aplicarGruposSugeridos() {
     if (!code) return alert("Primero crea una sala.");
     if (!recommendedGroups.length) return alert("No hay grupos sugeridos.");
 
-    // 1. Pausar Polling
+    // 1. PAUSAR LA ACTUALIZACIÓN AUTOMÁTICA
     isUploading.current = true;
 
     try {
-      // 2. Mostrar en pantalla inmediatamente
+      // 2. MOSTRARLOS EN PANTALLA INMEDIATAMENTE (Lista de abajo)
       update((prev) => {
         const otros = prev.teams.filter((t) => t.roomCode !== code);
         const nuevos = recommendedGroups.map((g, i) => ({
@@ -2502,26 +2502,28 @@ async function aplicarGruposSugeridos() {
         return { ...prev, teams: [...otros, ...nuevos] };
       });
 
-      // 3. Enviar al Servidor
+      // 3. ENVIAR A LA BASE DE DATOS
       const payload = recommendedGroups.map((g) => ({
         nombre: g.nombre,
         integrantes: []
       }));
+
       await uploadTeamsBatch(code, payload);
       
-      // 4. Configurar Sala
+      // 4. CONFIGURAR SALA
       publish({
         expectedTeams: recommendedGroups.length,
         formation: "auto",
         step: "lobby",
       });
 
-      // 🔥 CAMBIO CRÍTICO: NO BORRAMOS LA LISTA DE SUGERENCIAS
-      // setRecommendedGroups([]); <--- ESTA LÍNEA SE ELIMINA
+      // 🛑 AQUÍ ESTÁ EL CAMBIO QUE PEDISTE: 
+      // NO BORRAMOS setRecommendedGroups([]) PARA QUE EL EXCEL SIGA VISIBLE
+      // (Eliminé esa línea)
+      
+      alert(`✅ ${recommendedGroups.length} grupos cargados. Los alumnos ya pueden entrar.`);
 
-      alert(`✅ ${recommendedGroups.length} grupos aplicados. La lista se mantiene visible.`);
-
-      // 5. Verificar confirmación del servidor
+      // 5. ESPERAR A QUE EL SERVIDOR TENGA LOS DATOS (Para soltar el bloqueo)
       let intentos = 0;
       const checkInterval = setInterval(async () => {
           intentos++;
@@ -2530,6 +2532,8 @@ async function aplicarGruposSugeridos() {
               
               if (serverCheck && serverCheck.equipos && serverCheck.equipos.length >= recommendedGroups.length) {
                   clearInterval(checkInterval);
+                  
+                  // Actualizamos con IDs reales
                   update((prev) => {
                       const otros = prev.teams.filter((t) => t.roomCode !== code);
                       const nuevos = serverCheck.equipos.map((e: any) => ({
@@ -2546,7 +2550,8 @@ async function aplicarGruposSugeridos() {
                       return { ...prev, teams: [...otros, ...nuevos] };
                    });
 
-                  isUploading.current = false; 
+                  isUploading.current = false; // Soltamos bloqueo
+                  console.log("✅ Sincronización completada.");
               } 
               
               if (intentos > 15) {
