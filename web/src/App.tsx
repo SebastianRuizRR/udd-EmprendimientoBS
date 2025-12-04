@@ -2484,20 +2484,20 @@ async function aplicarGruposSugeridos() {
     if (!code) return alert("Primero crea una sala.");
     if (!recommendedGroups.length) return alert("No hay grupos sugeridos.");
 
-    // 1. BLOQUEO TOTAL: Detenemos el polling para que no borre nada
+    // 1. BLOQUEO TOTAL: Detenemos la actualización automática para que no borre nada
     isUploading.current = true;
 
     try {
-      // 2. MUESTRA INMEDIATA (Para que el profe vea que funcionó)
+      // 2. MUESTRA VISUAL INMEDIATA (Para que no desaparezcan mientras cargan)
       update((prev) => {
         const otros = prev.teams.filter((t) => t.roomCode !== code);
-        const nuevos = recommendedGroups.map((g) => ({
+        const nuevos = recommendedGroups.map((g, i) => ({
           roomCode: code,
           teamName: g.nombre,
           integrantes: [],
           ts: Date.now(),
           listo: false,
-          id: -1 // ID temporal visual
+          id: -1 * (i + 1) // ID temporal negativo
         }));
         return { ...prev, teams: [...otros, ...nuevos] };
       });
@@ -2507,7 +2507,6 @@ async function aplicarGruposSugeridos() {
         nombre: g.nombre,
         integrantes: []
       }));
-
       await uploadTeamsBatch(code, payload);
       
       // 4. CONFIGURACIÓN DE SALA
@@ -2517,38 +2516,54 @@ async function aplicarGruposSugeridos() {
         step: "lobby",
       });
 
-      alert(`✅ ${recommendedGroups.length} grupos cargados. Esperando confirmación del servidor...`);
+      alert(`✅ ${recommendedGroups.length} grupos enviados. Sincronizando...`);
 
-      // 5. VERIFICACIÓN DE SEGURIDAD (El truco anti-desaparición)
-      // No soltamos el bloqueo hasta que el servidor nos confirme que tiene los datos
+      // 5. EL TRUCO: BUCLE DE VERIFICACIÓN
+      // No soltamos el bloqueo hasta que el servidor nos devuelva los datos reales
       let intentos = 0;
       const checkInterval = setInterval(async () => {
           intentos++;
           try {
-              // Preguntamos al servidor manualmente
+              // Preguntamos al servidor: "¿Ya tienes los equipos?"
               const serverCheck = await getRoomState(code);
               
-              // Si el servidor YA tiene los equipos, soltamos el bloqueo
-              if (serverCheck && serverCheck.equipos && serverCheck.equipos.length > 0) {
+              // Si el servidor responde con equipos, actualizamos y soltamos
+              if (serverCheck && serverCheck.equipos && serverCheck.equipos.length >= recommendedGroups.length) {
                   clearInterval(checkInterval);
-                  isUploading.current = false; 
-                  console.log("✅ Sincronización completada: El servidor ya tiene los equipos.");
+                  
+                  update((prev) => {
+                      const otros = prev.teams.filter(t => t.roomCode !== code);
+                      const nuevos = serverCheck.equipos.map((e: any) => ({
+                         id: e.id,
+                         listo: !!e.listo,
+                         puntos: e.puntos || 0,
+                         fotoLegoUrl: e.foto,
+                         desafioId: e.desafioId,
+                         roomCode: code,
+                         teamName: e.teamName,
+                         integrantes: e.integrantes,
+                         ts: Date.now()
+                      }));
+                      return { ...prev, teams: [...otros, ...nuevos] };
+                   });
+
+                  isUploading.current = false; // ¡AHORA SÍ SOLTAMOS!
+                  console.log("✅ Sincronización completada.");
               } 
-              // Si pasaron 10 segundos y nada, soltamos igual para no congelar
-              else if (intentos > 10) {
+              
+              // Si pasan 15 segundos, soltamos por seguridad
+              if (intentos > 15) {
                   clearInterval(checkInterval);
                   isUploading.current = false;
-                  console.warn("⚠️ Tiempo de espera agotado en sincronización.");
               }
           } catch(e) { }
-      }, 1000); // Revisar cada segundo
+      }, 1000); 
 
     } catch (error: any) {
       console.error(error);
       alert("Error al guardar: " + error.message);
       isUploading.current = false;
     }
-    // Nota: Quitamos el 'finally' con timeout fijo porque ahora usamos el intervalo inteligente
   }
 
 function resetSalaActual(keepCode: boolean = true) {
@@ -3275,6 +3290,25 @@ const [checklistConfig, setChecklistConfig] = useState<any[]>(DEFAULT_CHECKLIST)
                     }}
                   >
                     {activeRoom}
+                  </div>
+                  <div style={{marginTop: 20, marginBottom: 20, maxHeight: 300, overflowY: 'auto', border: '1px solid #eee', borderRadius: 8, padding: 10, textAlign: 'left'}}>
+                        <h4 style={{margin: '0 0 10px 0', color: '#666'}}>Equipos en Sala:</h4>
+                        {analytics.teams.filter(t => t.roomCode === activeRoom).length === 0 && <div style={{color:'#999'}}>Esperando equipos...</div>}
+                        
+                        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap: 8}}>
+                            {analytics.teams.filter(t => t.roomCode === activeRoom).map((t, i) => (
+                                <div key={i} style={{
+                                    padding: 8, 
+                                    background: t.listo ? '#E8F5E9' : '#F5F5F5', 
+                                    borderRadius: 6,
+                                    borderLeft: `4px solid ${t.listo ? '#4CAF50' : '#ccc'}`,
+                                    fontSize: 13, textAlign: 'left'
+                                }}>
+                                    <strong>{t.teamName}</strong>
+                                    {t.listo && <span style={{float:'right'}}>✅ Listo</span>}
+                                </div>
+                            ))}
+                        </div>
                   </div>
 {/* CONTADOR REAL: Filtramos directamente desde la data completa */}
 <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12, padding: 10, background: "#f0f0f0", borderRadius: 8 }}>
