@@ -2484,24 +2484,25 @@ async function aplicarGruposSugeridos() {
     if (!code) return alert("Primero crea una sala.");
     if (!recommendedGroups.length) return alert("No hay grupos sugeridos.");
 
-    // 1. BLOQUEO TOTAL DE SINCRONIZACIÓN (Para que no se borren)
-    isUploading.current = true; 
+    // 1. BLOQUEO TOTAL: Detenemos el polling para que no borre nada
+    isUploading.current = true;
 
     try {
-      // 2. Actualización Visual Inmediata (Optimista)
+      // 2. MUESTRA INMEDIATA (Para que el profe vea que funcionó)
       update((prev) => {
         const otros = prev.teams.filter((t) => t.roomCode !== code);
         const nuevos = recommendedGroups.map((g) => ({
           roomCode: code,
           teamName: g.nombre,
-          integrantes: [], 
+          integrantes: [],
           ts: Date.now(),
-          listo: false
+          listo: false,
+          id: -1 // ID temporal visual
         }));
         return { ...prev, teams: [...otros, ...nuevos] };
       });
 
-      // 3. Enviar al Servidor
+      // 3. SUBIDA AL SERVIDOR
       const payload = recommendedGroups.map((g) => ({
         nombre: g.nombre,
         integrantes: []
@@ -2509,25 +2510,45 @@ async function aplicarGruposSugeridos() {
 
       await uploadTeamsBatch(code, payload);
       
-      // 4. Actualizar estado de la sala a "Auto"
+      // 4. CONFIGURACIÓN DE SALA
       publish({
         expectedTeams: recommendedGroups.length,
         formation: "auto",
         step: "lobby",
       });
 
-      alert(`✅ ${recommendedGroups.length} grupos cargados. Los alumnos ya pueden entrar.`);
+      alert(`✅ ${recommendedGroups.length} grupos cargados. Esperando confirmación del servidor...`);
+
+      // 5. VERIFICACIÓN DE SEGURIDAD (El truco anti-desaparición)
+      // No soltamos el bloqueo hasta que el servidor nos confirme que tiene los datos
+      let intentos = 0;
+      const checkInterval = setInterval(async () => {
+          intentos++;
+          try {
+              // Preguntamos al servidor manualmente
+              const serverCheck = await getRoomState(code);
+              
+              // Si el servidor YA tiene los equipos, soltamos el bloqueo
+              if (serverCheck && serverCheck.equipos && serverCheck.equipos.length > 0) {
+                  clearInterval(checkInterval);
+                  isUploading.current = false; 
+                  console.log("✅ Sincronización completada: El servidor ya tiene los equipos.");
+              } 
+              // Si pasaron 10 segundos y nada, soltamos igual para no congelar
+              else if (intentos > 10) {
+                  clearInterval(checkInterval);
+                  isUploading.current = false;
+                  console.warn("⚠️ Tiempo de espera agotado en sincronización.");
+              }
+          } catch(e) { }
+      }, 1000); // Revisar cada segundo
 
     } catch (error: any) {
       console.error(error);
       alert("Error al guardar: " + error.message);
-      isUploading.current = false; // Desbloquear si falla
-    } finally {
-      // 5. DESBLOQUEO SEGURO (Damos 3 segundos al servidor para procesar antes de volver a leer)
-      setTimeout(() => {
-        isUploading.current = false;
-      }, 3000);
+      isUploading.current = false;
     }
+    // Nota: Quitamos el 'finally' con timeout fijo porque ahora usamos el intervalo inteligente
   }
 
 function resetSalaActual(keepCode: boolean = true) {
