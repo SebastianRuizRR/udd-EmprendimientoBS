@@ -18,24 +18,25 @@ services:
       timeout: 5s
       retries: 5
 
-  server:
-    build: ./server
-    container_name: udd_server_prod
-    ports:
-      - "4001:4000" 
-      - "5556:5555" 
-    environment:
-      DATABASE_URL: "mysql://appuser:apppass@db:3306/appdb" 
-      PORT: "4000"
-      NODE_ENV: "production"
-    command: sh -c "npm run prisma:deploy && npm run start"
+    server:
+      build: ./server
+      container_name: udd_server_prod
+      ports:
+        - "4001:4000"
+        - "5556:5555"
+      environment:
+        DATABASE_URL: "mysql://appuser:apppass@db:3306/appdb"
+        PORT: "4000"
+        NODE_ENV: "production"
+      command: sh -c "npm run start"
+
 
   web:
     build:
       context: ./web
       args:
-        # Usa http://TU_IP_PUBLICA_AWS:4001 (o tu dominio si lo tienes)
-            - VITE_API_URL=http://3.139.79.95:4001
+        - VITE_API_URL=http://3.139.79.95:4001
+
 
     container_name: udd_web_prod
     restart: always
