@@ -1387,6 +1387,55 @@ publish({
     }
   };
 
+function handleCreateRoom() {
+  (async () => {
+    if (!profAuth) {
+      setShowProfLogin(true);
+      return;
+    }
+    
+    const host = profAuth?.name || profAuth?.user || "Profesor";    
+
+    writeJSON(READY_KEY, []);
+    try { window.dispatchEvent(new StorageEvent("storage", { key: READY_KEY, newValue: "[]" })); } catch {}
+    writeJSON(COINS_KEY, {});
+    try { window.dispatchEvent(new StorageEvent("storage", { key: COINS_KEY, newValue: "{}" })); } catch {}
+
+    let code = "";
+    try {
+        const res = await createRoom({ hostName: host });
+        code = res.roomCode;
+    } catch (e) {
+        console.error(e);
+        alert("Error al conectar con el servidor para crear sala.");
+        return;
+    }
+
+    const expected = recommendedGroups.length
+      ? Math.max(MIN_GROUPS, Math.min(recommendedGroups.length, MAX_GROUPS))
+      : equiposQty;
+
+    publish({
+      roomCode: code,
+      expectedTeams: expected,
+      step: "lobby",
+      remaining: 5 * 60,
+      running: false,
+      formation: "manual",
+    });
+
+    setRoomCode(code);
+    setJoinedRoom(code);
+    
+    const url = new URL(window.location.href);
+    url.searchParams.set("room", code);
+    window.history.replaceState({}, "", url.toString());
+    
+    update((a) => ({ ...a, roomsCreated: a.roomsCreated + 1 }));
+  })();
+}
+
+
 const goPrevStep = React.useCallback(() => {
   const s = flow.step;
 
@@ -1687,42 +1736,28 @@ const handleSmartReset = () => {
     );
 
   const markReady = () => {
-    const set = new Set<string>(readJSON<string[]>(READY_KEY, []));
-    if (teamId) set.add(teamId);
-    const arr = Array.from(set);
-    writeJSON(READY_KEY, arr);
-    try {
-      window.dispatchEvent(
-        new StorageEvent("storage", {
-          key: READY_KEY,
-          newValue: JSON.stringify(arr),
-        })
-      );
-    } catch {}
-    if (teamId) {
-      const teamName = teamId.split("::")[1] || "Equipo";
-      update((a) => ({
-        ...a,
-        teams: [
-          ...a.teams,
-          {
-            roomCode: activeRoom,
-            teamName,
-            integrantes: integrantes.length
-              ? integrantes
-              : [
-                  {
-                    nombre: miNombre || "Integrante",
-                    carrera: miCarrera || "—",
-                  },
-                ],
-            ts: Date.now(),
-          },
-        ],
-      }));
-    }
-    setTeamReady(true);
-  };
+  if (!teamId || !roomCode) return;
+
+  const list = readJSON<string[]>(READY_KEY, []);
+  const set = new Set<string>(list);
+
+  // Clave consistente con readyCount / readyTeamNames / clearReadyForRoom
+  const key = `${roomCode}::${teamId}`;
+  set.add(key);
+
+  const arr = Array.from(set);
+  writeJSON(READY_KEY, arr);
+
+  try {
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: READY_KEY,
+        newValue: JSON.stringify(arr),
+      })
+    );
+  } catch {}
+};
+
   function readyCount(roomCode: string) {
     const set = new Set<string>(readJSON<string[]>(READY_KEY, []));
     return Array.from(set).filter((id) => id.startsWith(`${roomCode}::`))
@@ -2339,53 +2374,7 @@ const BigTimer: React.FC<{ label?: string; defaultSec?: number }> = ({ label }) 
   </div>
 );
 
-function handleCreateRoom() {
-  (async () => {
-    if (!profAuth) {
-      setShowProfLogin(true);
-      return;
-    }
-    
-    const host = profAuth?.name || profAuth?.user || "Profesor";    
 
-    writeJSON(READY_KEY, []);
-    try { window.dispatchEvent(new StorageEvent("storage", { key: READY_KEY, newValue: "[]" })); } catch {}
-    writeJSON(COINS_KEY, {});
-    try { window.dispatchEvent(new StorageEvent("storage", { key: COINS_KEY, newValue: "{}" })); } catch {}
-
-    let code = "";
-    try {
-        const res = await createRoom({ hostName: host });
-        code = res.roomCode;
-    } catch (e) {
-        console.error(e);
-        alert("Error al conectar con el servidor para crear sala.");
-        return;
-    }
-
-    const expected = recommendedGroups.length
-      ? Math.max(MIN_GROUPS, Math.min(recommendedGroups.length, MAX_GROUPS))
-      : equiposQty;
-
-    publish({
-      roomCode: code,
-      expectedTeams: expected,
-      step: "lobby",
-      remaining: 5 * 60,
-      running: false,
-      formation: "manual",
-    });
-
-    setRoomCode(code);
-    setJoinedRoom(code);
-    
-    const url = new URL(window.location.href);
-    url.searchParams.set("room", code);
-    window.history.replaceState({}, "", url.toString());
-    
-    update((a) => ({ ...a, roomsCreated: a.roomsCreated + 1 }));
-  })();
-}
 
   function handleExcelUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
