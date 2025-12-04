@@ -1632,25 +1632,28 @@ const goPrevStep = React.useCallback(() => {
           formation: serverState.formation
         }));
 
-        if (serverState.equipos) {
-           update(prev => {
-              const otros = prev.teams.filter(t => t.roomCode !== code);
-              
-              const nuevos = serverState.equipos.map((e: any) => ({
-                 id: e.id,            
-                 listo: !!e.listo,    
-                 puntos: e.puntos || 0,   
-                 fotoLegoUrl: e.foto, 
-                 desafioId: e.desafioId, 
-                 feedbackData: e.feedbackData, 
-                 roomCode: code,
-                 teamName: e.teamName, 
-                 integrantes: e.integrantes,
-                 ts: Date.now()
-              }));
-              return { ...prev, teams: [...otros, ...nuevos] };
-           });
-        }
+if (serverState.equipos) {
+  update((prev) => {
+    const otros = prev.teams.filter((t) => t.roomCode !== code);
+
+    const nuevos = serverState.equipos.map((e: any) => ({
+      id: e.id,
+      listo: !!e.listo,
+      puntos: e.puntos ?? 0,
+      fotoLegoUrl: e.foto ?? e.fotoLegoUrl ?? null,
+      desafioId: e.desafioId ?? null,
+      feedbackData: e.feedbackData ?? null,
+      roomCode: code,
+      // 👇 usar el nombre que realmente manda el backend
+      teamName: e.nombre,
+      integrantes: e.integrantes ?? [],
+      ts: Date.now(),
+    }));
+
+    return { ...prev, teams: [...otros, ...nuevos] };
+  });
+}
+
       }
     }, 2000); // Cada 2 segundos
 
