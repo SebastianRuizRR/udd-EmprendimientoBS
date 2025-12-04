@@ -2484,12 +2484,13 @@ async function aplicarGruposSugeridos() {
     if (!code) return alert("Primero crea una sala.");
     if (!recommendedGroups.length) return alert("No hay grupos sugeridos.");
 
-    // 1. BLOQUEO TOTAL: Detenemos la actualización automática para que no borre nada
+    // 1. PAUSAR LA ACTUALIZACIÓN AUTOMÁTICA
+    // Esto evita que el servidor te borre los grupos mientras se guardan
     isUploading.current = true;
 
     try {
-      // 2. MUESTRA VISUAL INMEDIATA (Para que no desaparezcan mientras cargan)
-      // Esto llena la lista de abajo instantáneamente
+      // 2. MOSTRARLOS EN PANTALLA INMEDIATAMENTE (Visual)
+      // Así el profesor los ve instantáneamente y no hay parpadeo
       update((prev) => {
         const otros = prev.teams.filter((t) => t.roomCode !== code);
         const nuevos = recommendedGroups.map((g, i) => ({
@@ -2498,74 +2499,58 @@ async function aplicarGruposSugeridos() {
           integrantes: [],
           ts: Date.now(),
           listo: false,
-          id: -1 * (i + 1) // ID temporal
+          id: -1 // ID temporal visual
         }));
         return { ...prev, teams: [...otros, ...nuevos] };
       });
 
-      // 3. SUBIDA AL SERVIDOR
+      // 3. ENVIAR A LA BASE DE DATOS
       const payload = recommendedGroups.map((g) => ({
         nombre: g.nombre,
         integrantes: []
       }));
-      
-      // Enviamos los datos
+
       await uploadTeamsBatch(code, payload);
       
-      // 4. CONFIGURACIÓN DE SALA
+      // 4. OBTENER LOS DATOS REALES (IDs) DEL SERVIDOR
+      // Hacemos una petición manual inmediata para tener los IDs reales para los alumnos
+      const serverCheck = await getRoomState(code);
+
+      if (serverCheck && serverCheck.equipos) {
+           update((prev) => {
+              const otros = prev.teams.filter((t) => t.roomCode !== code);
+              const nuevos = serverCheck.equipos.map((e: any) => ({
+                 id: e.id,
+                 listo: !!e.listo,
+                 puntos: e.puntos || 0,
+                 fotoLegoUrl: e.foto,
+                 desafioId: e.desafioId,
+                 roomCode: code,
+                 teamName: e.teamName,
+                 integrantes: e.integrantes,
+                 ts: Date.now()
+              }));
+              return { ...prev, teams: [...otros, ...nuevos] };
+           });
+      }
+
+      // 5. CONFIGURAR SALA Y LIMPIAR VISTA PREVIA
       publish({
         expectedTeams: recommendedGroups.length,
         formation: "auto",
         step: "lobby",
       });
 
-      alert(`✅ ${recommendedGroups.length} grupos cargados.`);
-
-      // 5. EL TRUCO: BUCLE DE VERIFICACIÓN
-      // No soltamos el bloqueo hasta que el servidor nos devuelva los datos reales
-      // Así la lista de abajo NUNCA parpadea ni se borra
-      let intentos = 0;
-      const checkInterval = setInterval(async () => {
-          intentos++;
-          try {
-              const serverCheck = await getRoomState(code);
-              
-              // Si el servidor YA tiene los equipos, soltamos el bloqueo
-              if (serverCheck && serverCheck.equipos && serverCheck.equipos.length >= recommendedGroups.length) {
-                  clearInterval(checkInterval);
-                  
-                  // Actualizamos con los IDs reales del servidor
-                  update((prev) => {
-                      const otros = prev.teams.filter(t => t.roomCode !== code);
-                      const nuevos = serverCheck.equipos.map((e: any) => ({
-                         id: e.id,
-                         listo: !!e.listo,
-                         puntos: e.puntos || 0,
-                         fotoLegoUrl: e.foto,
-                         desafioId: e.desafioId,
-                         roomCode: code,
-                         teamName: e.teamName,
-                         integrantes: e.integrantes,
-                         ts: Date.now()
-                      }));
-                      return { ...prev, teams: [...otros, ...nuevos] };
-                   });
-
-                  isUploading.current = false; // ¡AHORA SÍ SOLTAMOS!
-                  console.log("✅ Sincronización completada.");
-              } 
-              
-              // Si pasan 15 segundos, soltamos por seguridad
-              if (intentos > 15) {
-                  clearInterval(checkInterval);
-                  isUploading.current = false;
-              }
-          } catch(e) { }
-      }, 1000); 
+      // ¡ESTO QUITA LA VISTA DE EN MEDIO!
+      setRecommendedGroups([]); 
+      
+      alert(`✅ ${recommendedGroups.length} grupos cargados correctamente.`);
 
     } catch (error: any) {
       console.error(error);
       alert("Error al guardar: " + error.message);
+    } finally {
+      // 6. REANUDAR ACTUALIZACIÓN AUTOMÁTICA
       isUploading.current = false;
     }
   }
