@@ -2484,11 +2484,12 @@ async function aplicarGruposSugeridos() {
     if (!code) return alert("Primero crea una sala.");
     if (!recommendedGroups.length) return alert("No hay grupos sugeridos.");
 
-    // 1. PAUSAR LA ACTUALIZACIÓN AUTOMÁTICA
+    // 1. PAUSAR POLLING (Vital para que no desaparezcan)
     isUploading.current = true;
 
     try {
-      // 2. MOSTRARLOS EN PANTALLA INMEDIATAMENTE (Lista de abajo)
+      // 2. MUESTRA VISUAL INMEDIATA (Optimismo)
+      // Ponemos los grupos en el Lobby YA, con IDs temporales
       update((prev) => {
         const otros = prev.teams.filter((t) => t.roomCode !== code);
         const nuevos = recommendedGroups.map((g, i) => ({
@@ -2497,43 +2498,46 @@ async function aplicarGruposSugeridos() {
           integrantes: [],
           ts: Date.now(),
           listo: false,
-          id: -1 * (i + 1)
+          id: -1 * (i + 1) // ID temporal para que se vea
         }));
         return { ...prev, teams: [...otros, ...nuevos] };
       });
 
-      // 3. ENVIAR A LA BASE DE DATOS
+      // 3. LIMPIAR LA "VISTA DE EN MEDIO" (El Excel ya se aplicó)
+      setRecommendedGroups([]);
+
+      // 4. SUBIDA AL SERVIDOR
       const payload = recommendedGroups.map((g) => ({
         nombre: g.nombre,
         integrantes: []
       }));
 
+      // Enviamos y esperamos respuesta
       await uploadTeamsBatch(code, payload);
       
-      // 4. CONFIGURAR SALA
+      // 5. CONFIGURAR SALA
       publish({
         expectedTeams: recommendedGroups.length,
         formation: "auto",
         step: "lobby",
       });
 
-      // 🛑 AQUÍ ESTÁ EL CAMBIO QUE PEDISTE: 
-      // NO BORRAMOS setRecommendedGroups([]) PARA QUE EL EXCEL SIGA VISIBLE
-      // (Eliminé esa línea)
-      
-      alert(`✅ ${recommendedGroups.length} grupos cargados. Los alumnos ya pueden entrar.`);
+      alert(`✅ ${recommendedGroups.length} grupos creados. Esperando confirmación del servidor...`);
 
-      // 5. ESPERAR A QUE EL SERVIDOR TENGA LOS DATOS (Para soltar el bloqueo)
+      // 6. ESPERA ACTIVA (EL BLINDAJE)
+      // No soltamos el bloqueo hasta estar 100% seguros de que el servidor tiene los datos
       let intentos = 0;
       const checkInterval = setInterval(async () => {
           intentos++;
           try {
+              // Preguntamos manualmente al servidor
               const serverCheck = await getRoomState(code);
               
-              if (serverCheck && serverCheck.equipos && serverCheck.equipos.length >= recommendedGroups.length) {
+              // Si el servidor responde con los equipos correctos...
+              if (serverCheck && serverCheck.equipos && serverCheck.equipos.length >= payload.length) {
                   clearInterval(checkInterval);
                   
-                  // Actualizamos con IDs reales
+                  // Actualizamos con los datos REALES (IDs reales) del servidor
                   update((prev) => {
                       const otros = prev.teams.filter((t) => t.roomCode !== code);
                       const nuevos = serverCheck.equipos.map((e: any) => ({
@@ -2550,21 +2554,24 @@ async function aplicarGruposSugeridos() {
                       return { ...prev, teams: [...otros, ...nuevos] };
                    });
 
-                  isUploading.current = false; // Soltamos bloqueo
-                  console.log("✅ Sincronización completada.");
+                  // RECIÉN AHORA SOLTAMOS EL BLOQUEO
+                  isUploading.current = false; 
+                  console.log("✅ Sincronización completada y estable.");
               } 
               
+              // Timeout de seguridad (15s)
               if (intentos > 15) {
                   clearInterval(checkInterval);
                   isUploading.current = false;
+                  console.warn("⚠️ Timeout esperando servidor. Se mantienen datos locales.");
               }
           } catch(e) { }
       }, 1000); 
 
     } catch (error: any) {
       console.error(error);
-      alert("Error al guardar: " + error.message);
-      isUploading.current = false;
+      alert("Error crítico al guardar: " + error.message);
+      isUploading.current = false; // Soltar solo si hubo error fatal
     }
   }
 function resetSalaActual(keepCode: boolean = true) {
