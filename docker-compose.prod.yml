@@ -37,7 +37,7 @@ services:
     build:
       context: ./web
       args:
-        - VITE_API_URL=http://3.139.79.95:4001
+        - VITE_API_URL=http://18.221.120.112:4001
     container_name: udd_web_prod
     restart: always
     depends_on:
